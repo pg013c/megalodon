@@ -66,8 +66,8 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 ## Step 9 — API, MCP and chat
 - [x] All commands and queries exposed over MCP.
 - [x] In-app chat agent using that MCP, aware of the active project and open item.
-- [ ] Stable instance from a tagged build (ADR-0013); Megalodon connected to itself as a project.
-- [ ] **Self-hosting check:** three tasks added through chat are merged to Megalodon's `main`.
+- [x] Stable instance from a tagged build (ADR-0013); Megalodon connected to itself as a project.
+- [x] **Self-hosting check:** three tasks added through chat are merged to Megalodon's `main`.
 
 ## After the MVP
 Evaluation (agent and pipeline versions, golden sets), integrations (GitHub, Bitbucket, AWS logs),
