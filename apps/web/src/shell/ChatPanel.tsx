@@ -5,6 +5,7 @@ import { useChat, useChatActions } from '../data/chat';
 import { useActiveProject } from '../data/projects';
 import { Button } from '../ui/Button';
 import { ErrorText } from '../ui/Field';
+import { Markdown } from '../ui/Markdown';
 import { useUiState } from './UiState';
 
 /** The open item, read from the address: /tasks/:id or /runs/:id. */
@@ -100,7 +101,7 @@ function Message({ message }: { message: ChatMessage }) {
       </p>
     );
   }
-  return <p className="mr-6 whitespace-pre-wrap text-[13px] leading-5">{message.text}</p>;
+  return <Markdown text={message.text} className="mr-6 text-[13px] leading-5" />;
 }
 
 /** The telling argument of a tool call, e.g. the title of a created task. */
