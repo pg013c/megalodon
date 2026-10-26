@@ -7,6 +7,7 @@ import { Empty } from '../../ui/Empty';
 
 const tabs = [
   { to: '/project', label: 'Board', end: true },
+  { to: '/project/backlog', label: 'Backlog', end: false },
   { to: '/project/branches', label: 'Branches', end: false },
   { to: '/project/settings', label: 'Settings', end: false },
 ];

@@ -7,6 +7,7 @@ import { NeedsYouScreen } from './screens/NeedsYouScreen';
 import { LibraryScreen } from './screens/library/LibraryScreen';
 import { RunScreen } from './screens/run/RunScreen';
 import { Overview } from './screens/Overview';
+import { ProjectBacklog } from './screens/project/ProjectBacklog';
 import { ProjectBoard } from './screens/project/ProjectBoard';
 import { ProjectBranches } from './screens/project/ProjectBranches';
 import { ProjectLayout } from './screens/project/ProjectLayout';
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
         element: <ProjectLayout />,
         children: [
           { index: true, element: <ProjectBoard /> },
+          { path: 'backlog', element: <ProjectBacklog /> },
           { path: 'branches', element: <ProjectBranches /> },
           { path: 'settings', element: <ProjectSettingsScreen /> },
         ],

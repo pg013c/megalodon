@@ -37,6 +37,15 @@ export function useCreateStory(projectId: string) {
   });
 }
 
+export function useUpdateStory(id: string) {
+  const invalidate = useInvalidateWork();
+  return useMutation({
+    mutationFn: (input: { title?: string; description?: string }) =>
+      api(`/api/stories/${id}`, storySchema, { method: 'PATCH', body: input }),
+    onSuccess: invalidate,
+  });
+}
+
 export function useCreateTask(projectId: string) {
   const invalidate = useInvalidateWork();
   return useMutation({
