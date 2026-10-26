@@ -8,11 +8,11 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 `pnpm test` passing.
 
 ## Step 0 — Skeleton
-- [ ] pnpm workspace with `apps/server`, `apps/web`, `packages/contracts`.
-- [ ] Library choices (HTTP framework, SQLite access, UI kit, test runner) recorded as ADRs.
-- [ ] Server on `127.0.0.1`, configurable port and data dir, data-dir lock file.
-- [ ] Event store: append + projections in one transaction; projection rebuild test.
-- [ ] Web shell with the five main screens as empty routes and `Cmd+K`.
+- [x] pnpm workspace with `apps/server`, `apps/web`, `packages/contracts`.
+- [x] Library choices (HTTP framework, SQLite access, UI kit, test runner) recorded as ADRs.
+- [x] Server on `127.0.0.1`, configurable port and data dir, data-dir lock file.
+- [x] Event store: append + projections in one transaction; projection rebuild test.
+- [x] Web shell with the five main screens as empty routes and `Cmd+K`.
 
 ## Step 1 — Projects and context
 - [ ] Connect a local git repository as a project; reject non-repositories.
