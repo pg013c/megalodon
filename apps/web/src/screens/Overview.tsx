@@ -4,6 +4,7 @@ import { timeAgo } from '../lib/format';
 import { useUiState } from '../shell/UiState';
 import { Button } from '../ui/Button';
 import { Empty } from '../ui/Empty';
+import { QueuePanel } from './QueuePanel';
 
 /** Every project at a glance. Status, Needs you and metrics arrive with later MVP steps. */
 export function Overview() {
@@ -24,6 +25,12 @@ export function Overview() {
         <h1 className="text-3xl font-semibold tracking-tight">Overview</h1>
         {!!projects.data?.length && <Button onClick={() => setConnectOpen(true)}>Connect project</Button>}
       </div>
+
+      {!!projects.data?.length && (
+        <div className="mt-8">
+          <QueuePanel />
+        </div>
+      )}
 
       <div className="mt-8">
         {projects.data?.length === 0 && (

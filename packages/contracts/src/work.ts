@@ -73,6 +73,9 @@ export function deriveStoryStatus(tasks: readonly StatusOf[]): StoryStatus {
 
 // Read models
 
+/** Where a task stands in triage (CONCEPTS.md §1). `none`: not triaged (manual tasks, older tasks). */
+export const triageStateSchema = z.enum(['none', 'pending', 'running', 'done', 'failed']);
+
 export const taskSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -87,6 +90,13 @@ export const taskSchema = z.object({
   statusReason: z.string().nullable(),
   statusChangedAt: z.string(),
   createdAt: z.string(),
+  /** Predicted touch-set: repository paths or globs the task changes. */
+  touches: z.array(z.string()),
+  pipelineId: z.string(),
+  /** Moved to the front of the queue by the operator. */
+  front: z.boolean(),
+  triage: triageStateSchema,
+  triageSummary: z.string().nullable(),
 });
 export type Task = z.infer<typeof taskSchema>;
 
@@ -103,9 +113,43 @@ export const storySchema = z.object({
 });
 export type Story = z.infer<typeof storySchema>;
 
+// Dependencies (CONCEPTS.md §4). `collision` is never stored: the scheduler computes it.
+
+export const dependencyKindSchema = z.enum(['code', 'manual', 'external']);
+export type DependencyKind = z.infer<typeof dependencyKindSchema>;
+
+export const dependencySchema = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  kind: dependencyKindSchema,
+  /** The task or story it waits for; null for external dependencies. */
+  target: z.object({ type: z.enum(['task', 'story']), id: z.string() }).nullable(),
+  /** Why it is needed, or for an external dependency what must be true. */
+  description: z.string(),
+  /** External only: a shell command, written by the operator, that passes when the condition holds. */
+  command: z.string().nullable(),
+  /** External only: met by the operator or by its command. */
+  met: z.boolean(),
+  createdAt: z.string(),
+});
+export type Dependency = z.infer<typeof dependencySchema>;
+
+/** One thing a task needs before it can start, as the board shows it. */
+export const requirementSchema = z.object({
+  kind: z.enum(['code', 'manual', 'external', 'collision']),
+  label: z.string(),
+  met: z.boolean(),
+  dependencyId: z.string().nullable(),
+  /** The task or story it points to, for links. */
+  ref: z.object({ type: z.enum(['task', 'story']), id: z.string(), number: z.number().int() }).nullable(),
+});
+export type Requirement = z.infer<typeof requirementSchema>;
+
 export const projectWorkSchema = z.object({
   stories: z.array(storySchema),
   tasks: z.array(taskSchema),
+  /** Per task id: what it needs to start. */
+  requirements: z.record(z.string(), z.array(requirementSchema)),
 });
 export type ProjectWork = z.infer<typeof projectWorkSchema>;
 
@@ -121,6 +165,8 @@ export type HistoryEntry = z.infer<typeof historyEntrySchema>;
 export const taskDetailsSchema = z.object({
   task: taskSchema,
   story: storySchema.nullable(),
+  dependencies: z.array(dependencySchema),
+  requirements: z.array(requirementSchema),
   history: z.array(historyEntrySchema),
 });
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
@@ -144,6 +190,13 @@ export const updateTaskBodySchema = z.object({
   storyId: z.string().nullable().optional(),
 });
 export const reasonBodySchema = z.object({ reason: z.string().trim().max(2000).optional() });
+export const addDependencyBodySchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('code'), target: z.object({ type: z.enum(['task', 'story']), id: z.string() }), description: z.string().default('') }),
+  z.object({ kind: z.literal('manual'), target: z.object({ type: z.literal('task'), id: z.string() }), description: z.string().default('') }),
+  z.object({ kind: z.literal('external'), description: z.string().trim().min(1), command: z.string().trim().min(1).nullable().default(null) }),
+]);
+export const setTouchesBodySchema = z.object({ touches: z.array(z.string().trim().min(1)) });
+export const setPipelineBodySchema = z.object({ pipelineId: z.string().min(1) });
 
 // Events
 
@@ -153,6 +206,16 @@ export const workEvents = {
   taskCreated: 'task.created',
   taskUpdated: 'task.updated',
   taskStatusChanged: 'task.status_changed',
+  taskTouchesSet: 'task.touches_set',
+  taskPipelineSet: 'task.pipeline_set',
+  taskMovedToFront: 'task.moved_to_front',
+  triageRequested: 'triage.requested',
+  triageStarted: 'triage.started',
+  triageCompleted: 'triage.completed',
+  triageFailed: 'triage.failed',
+  dependencyAdded: 'dependency.added',
+  dependencyRemoved: 'dependency.removed',
+  dependencyMet: 'dependency.met',
 } as const;
 
 export const storyCreatedSchema = z.object({
@@ -188,3 +251,11 @@ export const taskStatusChangedSchema = z.object({
 
 export const storyStream = (id: string) => `story:${id}`;
 export const taskStream = (id: string) => `task:${id}`;
+
+export const taskTouchesSetSchema = z.object({ id: z.string(), touches: z.array(z.string()) });
+export const taskPipelineSetSchema = z.object({ id: z.string(), pipelineId: z.string() });
+export const taskMovedToFrontSchema = z.object({ id: z.string() });
+export const triageEventSchema = z.object({ taskId: z.string(), summary: z.string().optional(), error: z.string().optional() });
+export const dependencyAddedSchema = dependencySchema.omit({ createdAt: true, met: true });
+export const dependencyRemovedSchema = z.object({ id: z.string() });
+export const dependencyMetSchema = z.object({ id: z.string() });

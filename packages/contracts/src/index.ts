@@ -7,3 +7,4 @@ export * from './runs';
 export * from './outputs';
 export * from './pipelines';
 export * from './decisions';
+export * from './queue';

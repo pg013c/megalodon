@@ -94,7 +94,7 @@ a task or a story; a story dependency means "every task of that story is met".
 | `code` | The target task is `done` (merged to `main`). | Payments needs Users. |
 | `collision` | No running or merging task shares the touch-set. Recomputed by the scheduler. | Two tasks change the same module. |
 | `manual` | The target manual task is `done` or `verified`. | Payments needs a Stripe API key. |
-| `external` | An automatic check passes; no human task. | The partner API is deployed to staging. |
+| `external` | The operator marks it met, or its check command (written by the operator) passes. | The partner API is deployed to staging. |
 
 **Revalidation before start:** when a task is about to take a slot, a short check confirms its
 dependencies and touch-set against the current `main`. If something changed, the task goes back to
@@ -110,8 +110,9 @@ dependencies and touch-set against the current `main`. If something changed, the
 - **Move to front** is the only manual override of order.
 - Manual tasks take no slot. Triage runs in its own small lane outside the slot pool.
 - Each project's merge queue is serial and takes no slot.
-- On a subscription plan limit the scheduler pauses starting new runs and resumes after the limit
-  resets.
+- On a subscription plan limit the scheduler pauses starting new runs for 30 minutes, then puts the
+  tasks the limit stopped back in the queue (ADR-0026).
+- Runs the operator starts by hand bypass the order but count against the slots.
 
 ## 6. Gates and policies
 

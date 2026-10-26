@@ -26,6 +26,7 @@ export function detectSettings(root: string, baseBranch: string): ProjectSetting
     maxFixPasses: 2,
     sensitivePaths: [],
     knowledge: { location: 'repo', path: 'docs' },
+    maxParallel: null,
   };
 }
 

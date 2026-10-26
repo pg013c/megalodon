@@ -32,6 +32,7 @@ describe('ProjectService', () => {
       maxFixPasses: 2,
       sensitivePaths: [],
       knowledge: { location: 'repo', path: 'docs' },
+      maxParallel: null,
     });
     expect(projects.activeProjectId()).toBe(project.id);
   });

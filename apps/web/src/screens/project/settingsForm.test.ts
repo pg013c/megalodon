@@ -10,6 +10,7 @@ const settings: ProjectSettings = {
   maxFixPasses: 2,
   sensitivePaths: ['src/payments/**', 'migrations/**'],
   knowledge: { location: 'repo', path: 'docs' },
+  maxParallel: null,
 };
 
 describe('settings form', () => {

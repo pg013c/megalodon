@@ -14,16 +14,23 @@ export class ClaudeRuntime implements AgentRuntime {
     else input.signal.addEventListener('abort', () => abortController.abort(), { once: true });
     const started = Date.now();
     let sawResult = false;
+    let rateLimited = false;
     try {
       for await (const message of query({ prompt: input.prompt, options: claudeOptions(input, abortController) })) {
+        if (message.type === 'assistant' && message.error === 'rate_limit') rateLimited = true;
         for (const event of mapSdkMessage(message)) {
-          if (event.type === 'result') sawResult = true;
+          if (event.type === 'result') {
+            sawResult = true;
+            if (!event.ok && (rateLimited || isLimit(event.error))) event.limited = true;
+          }
           yield event;
         }
       }
     } catch (error) {
       if (sawResult) return;
-      yield failure(input.signal.aborted ? 'Stopped' : errorMessage(error), Date.now() - started);
+      const failed = failure(input.signal.aborted ? 'Stopped' : errorMessage(error), Date.now() - started);
+      if (failed.type === 'result' && (rateLimited || isLimit(failed.error))) failed.limited = true;
+      yield failed;
       return;
     }
     if (!sawResult) yield failure('The agent ended without a result', Date.now() - started);
@@ -146,6 +153,9 @@ function toolResultText(content: unknown): string {
   }
   return '';
 }
+
+/** Messages Claude Code uses when the plan's usage limit is reached. */
+export const isLimit = (text: string | null) => text !== null && /usage limit|rate[ _]limit|limit reached|resets at/i.test(text);
 
 function failure(error: string, durationMs: number): RuntimeEvent {
   return { type: 'result', ok: false, result: null, error, usage: zeroUsage, durationMs, numTurns: null };

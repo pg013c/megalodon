@@ -42,6 +42,9 @@ const STARTABLE = new Set(['backlog', 'ready', 'failed', 'needs_you']);
 
 const SETUP_TIMEOUT_MS = 15 * 60_000;
 
+/** Starts the error of a run the subscription's limit stopped; the scheduler pauses on it. */
+export const PLAN_LIMIT = 'Plan limit reached';
+
 export interface RunServiceDeps {
   store: EventStore;
   runs: RunsQueries;
@@ -115,7 +118,7 @@ export class RunService {
   }
 
   /** The operator starts a pipeline (or one agent) on a task: a new branch and worktree from the base. */
-  async start(taskId: string, source: { pipelineId: string } | { agentId: string }): Promise<Run> {
+  async start(taskId: string, source: { pipelineId: string } | { agentId: string }, actor: Actor = OPERATOR): Promise<Run> {
     const task = this.task(taskId);
     if (task.kind !== 'task') throw new AppError(400, 'NOT_AN_AGENT_TASK', 'Manual tasks are done by you, not by agents');
     if (this.deps.runs.forTask(taskId).some((r) => r.status === 'running')) {
@@ -141,11 +144,11 @@ export class RunService {
         type: runEvents.started,
         stream: runStream(runId),
         data: { runId, taskId, projectId: project.id, pipelineId, pipelineVersion, branch, worktreePath, baseRef, baseSha, plan },
-        actor: OPERATOR,
+        actor,
       },
     ]);
-    if (task.status === 'backlog' || task.status === 'failed') this.deps.work.transition(taskId, 'ready', 'Started by you', OPERATOR);
-    this.deps.work.transition(taskId, 'running', `Running ${pipelineId} on ${branch}`, OPERATOR);
+    if (task.status === 'backlog' || task.status === 'failed') this.deps.work.transition(taskId, 'ready', 'Started by you', actor);
+    this.deps.work.transition(taskId, 'running', `Running ${pipelineId} on ${branch}`, actor);
 
     this.launch(runId, false);
     return this.run(runId);
@@ -382,6 +385,10 @@ export class RunService {
         this.append(run.id, runEvents.stepCompleted, completed(run.id, step.stepId, attempt, status, event.usage, event.durationMs, event.numTurns, event.result, error));
         return status === 'cancelled' ? { kind: 'stopped' } : { kind: 'error', error: `${step.name}: ${error}` };
       };
+      if (!event.ok && event.limited && !active.stop) {
+        fail('failed', event.error ?? 'usage limit');
+        return { kind: 'error', error: `${PLAN_LIMIT}: ${event.error ?? 'usage limit'}` };
+      }
       if (!event.ok) return active.stop ? fail('cancelled', 'Stopped') : fail('failed', event.error ?? 'failed');
 
       let output: unknown;

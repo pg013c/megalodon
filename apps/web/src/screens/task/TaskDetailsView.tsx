@@ -6,6 +6,7 @@ import { statusLabel } from '../../lib/status';
 import { Button } from '../../ui/Button';
 import { ErrorText, Input, TextArea } from '../../ui/Field';
 import { StatusBadge } from '../../ui/StatusBadge';
+import { TaskQueue } from './TaskQueue';
 import { TaskRuns } from './TaskRuns';
 
 /** One task: what it is, where it stands, what you can do, and what happened to it. */
@@ -20,6 +21,7 @@ export function TaskDetailsView({ details }: { details: TaskDetails }) {
       </div>
       {task.statusReason && <p className="rounded-lg bg-canvas px-3 py-2 text-[13px] text-muted">{task.statusReason}</p>}
       <Actions task={task} />
+      <TaskQueue details={details} />
       <TaskRuns task={task} />
       <Editor task={task} />
       <History entries={details.history} />
@@ -149,6 +151,28 @@ function describe(entry: HistoryEntry): string {
       return 'Edited';
     case 'task.status_changed':
       return `${statusLabel[data.to ?? ''] ?? data.to}${data.reason ? ` — ${data.reason}` : ''}`;
+    case 'task.touches_set':
+      return 'Touch-set changed';
+    case 'task.pipeline_set':
+      return 'Pipeline chosen';
+    case 'task.moved_to_front':
+      return 'Moved to the front of the queue';
+    case 'triage.requested':
+      return 'Triage requested';
+    case 'triage.started':
+      return 'Triage started';
+    case 'triage.completed':
+      return 'Triaged';
+    case 'triage.failed':
+      return `Triage failed${(entry.data as { error?: string }).error ? ` — ${(entry.data as { error?: string }).error}` : ''}`;
+    case 'dependency.added':
+      return 'Dependency added';
+    case 'dependency.removed':
+      return 'Dependency removed';
+    case 'dependency.met':
+      return 'External dependency met';
+    case 'decision.made':
+      return 'Decision recorded';
     default:
       return entry.type;
   }

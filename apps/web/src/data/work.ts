@@ -1,4 +1,5 @@
 import {
+  dependencySchema,
   projectWorkSchema,
   storySchema,
   taskDetailsSchema,
@@ -6,6 +7,7 @@ import {
   type TaskKind,
 } from '@megalodon/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { z } from 'zod';
 import { api } from './api';
 
 export const workKeys = {
@@ -53,13 +55,53 @@ export function useUpdateTask(id: string) {
   });
 }
 
-export type TaskAction = 'cancel' | 'complete' | 'reopen';
+export type TaskAction = 'cancel' | 'complete' | 'reopen' | 'queue' | 'retry' | 'front' | 'triage';
 
 export function useTaskAction(id: string) {
   const invalidate = useInvalidateWork();
   return useMutation({
     mutationFn: ({ action, reason }: { action: TaskAction; reason?: string }) =>
       api(`/api/tasks/${id}/${action}`, taskSchema, { method: 'POST', body: reason ? { reason } : {} }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useAddDependency(taskId: string) {
+  const invalidate = useInvalidateWork();
+  return useMutation({
+    mutationFn: (
+      input:
+        | { kind: 'code'; target: { type: 'task' | 'story'; id: string } }
+        | { kind: 'manual'; target: { type: 'task'; id: string } }
+        | { kind: 'external'; description: string; command: string | null },
+    ) => api(`/api/tasks/${taskId}/dependencies`, dependencySchema, { method: 'POST', body: input }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDependencyAction() {
+  const invalidate = useInvalidateWork();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'remove' | 'met' }) =>
+      action === 'remove'
+        ? api(`/api/dependencies/${id}`, z.undefined(), { method: 'DELETE' })
+        : api(`/api/dependencies/${id}/met`, dependencySchema, { method: 'POST' }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetTouches(taskId: string) {
+  const invalidate = useInvalidateWork();
+  return useMutation({
+    mutationFn: (touches: string[]) => api(`/api/tasks/${taskId}/touches`, taskSchema, { method: 'PUT', body: { touches } }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetPipeline(taskId: string) {
+  const invalidate = useInvalidateWork();
+  return useMutation({
+    mutationFn: (pipelineId: string) => api(`/api/tasks/${taskId}/pipeline`, taskSchema, { method: 'PUT', body: { pipelineId } }),
     onSuccess: invalidate,
   });
 }

@@ -92,6 +92,12 @@ export function ProjectSettingsScreen() {
         </Field>
       </Section>
 
+      <Section title="Parallel runs" description="How many of this project's tasks may run at once. Empty: only the global limit applies.">
+        <Field label="Limit">
+          <Input value={form.maxParallel} onChange={(e) => set('maxParallel', e.target.value)} inputMode="numeric" className="w-20" placeholder="—" />
+        </Field>
+      </Section>
+
       <Section title="Sensitive areas" description="Changes here never merge without you.">
         <Field label="Paths" hint="Glob patterns, one per line, e.g. src/payments/**">
           <TextArea value={form.sensitivePaths} onChange={(e) => set('sensitivePaths', e.target.value)} spellCheck={false} />

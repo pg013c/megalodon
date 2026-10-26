@@ -10,6 +10,8 @@ export interface SettingsForm {
   sensitivePaths: string;
   knowledgeLocation: 'repo' | 'external';
   knowledgePath: string;
+  /** Empty: no per-project limit. */
+  maxParallel: string;
 }
 
 export function toForm(s: ProjectSettings): SettingsForm {
@@ -21,6 +23,7 @@ export function toForm(s: ProjectSettings): SettingsForm {
     sensitivePaths: listToLines(s.sensitivePaths),
     knowledgeLocation: s.knowledge.location,
     knowledgePath: s.knowledge.path,
+    maxParallel: s.maxParallel === null ? '' : String(s.maxParallel),
   };
 }
 
@@ -36,5 +39,6 @@ export function fromForm(form: SettingsForm, packageManager: ProjectSettings['pa
     maxFixPasses: Number(form.maxFixPasses),
     sensitivePaths: linesToList(form.sensitivePaths),
     knowledge: { location: form.knowledgeLocation, path: form.knowledgePath.trim() },
+    maxParallel: form.maxParallel.trim() === '' ? null : Number(form.maxParallel),
   };
 }

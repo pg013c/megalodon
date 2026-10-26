@@ -53,3 +53,12 @@ export async function branchDiff(cwd: string, baseSha: string): Promise<string> 
 export async function head(cwd: string): Promise<string> {
   return (await git(cwd, ['rev-parse', 'HEAD'])).trim();
 }
+
+/** A read-only look at a commit for triage: a detached worktree, removed afterwards. */
+export async function addDetachedWorktree(root: string, path: string, sha: string): Promise<void> {
+  await git(root, ['worktree', 'add', '--detach', path, sha], { timeoutMs: 120_000 });
+}
+
+export async function removeWorktree(root: string, path: string): Promise<void> {
+  await git(root, ['worktree', 'remove', '--force', path], { timeoutMs: 60_000 });
+}

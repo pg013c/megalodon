@@ -36,6 +36,8 @@ export const projectSettingsSchema = z
     /** Glob patterns of areas that never merge without the operator (payments, auth, migrations). */
     sensitivePaths: z.array(z.string().trim().min(1)),
     knowledge: knowledgeSchema,
+    /** At most this many runs of the project at once (CONCEPTS.md §5); null: only the global limit. */
+    maxParallel: z.number().int().min(1).max(50).nullable().default(null),
   })
   .refine((s) => new Set(s.checks.map((c) => c.name)).size === s.checks.length, {
     message: 'Check names must be unique',

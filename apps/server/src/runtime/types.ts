@@ -21,6 +21,8 @@ export type RuntimeEvent =
       /** The structured answer, for agents with an output contract. */
       output?: unknown;
       error: string | null;
+      /** The subscription's usage limit stopped the agent (CONCEPTS.md §5). */
+      limited?: boolean;
       usage: Usage;
       durationMs: number;
       numTurns: number | null;

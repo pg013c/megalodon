@@ -15,6 +15,9 @@ import { Library } from './library/library';
 import { RunsProjection, RunsQueries } from './runs/projection';
 import { agentEnv, RunService } from './runs/service';
 import { ClaudeRuntime } from './runtime/claude';
+import { SchedulerProjection, SchedulerQueries } from './scheduler/projection';
+import { Scheduler } from './scheduler/service';
+import { TriageService } from './triage/service';
 import { WorkProjection, WorkQueries } from './work/projection';
 import { WorkService } from './work/service';
 
@@ -37,7 +40,7 @@ try {
 }
 
 const db = openDatabase(join(config.dataDir, 'megalodon.db'));
-const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection()]);
+const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection()]);
 const projectsQueries = new ProjectsQueries(db);
 const projects = new ProjectService(store, projectsQueries);
 const work = new WorkService(store, new WorkQueries(db), projectsQueries);
@@ -46,19 +49,34 @@ const library = new Library([
   { source: 'library', path: join(config.dataDir, 'library') },
 ]);
 const decisions = new DecisionService(store, new DecisionsQueries(db));
+const env = agentEnv(process.env);
+const runtime = new ClaudeRuntime();
+const runsQueries = new RunsQueries(db);
 const runs = new RunService({
   store,
-  runs: new RunsQueries(db),
+  runs: runsQueries,
   work,
   decisions,
   projects: projectsQueries,
   library,
-  runtime: new ClaudeRuntime(),
+  runtime,
   dataDir: config.dataDir,
-  env: agentEnv(process.env),
+  env,
+});
+const triage = new TriageService({ store, work, decisions, projects: projectsQueries, library, runtime, dataDir: config.dataDir, env, auto: true });
+const scheduler = new Scheduler({
+  store,
+  queries: new SchedulerQueries(db),
+  work,
+  runs,
+  runsQueries,
+  projects: projectsQueries,
+  logDir: join(config.dataDir, 'logs'),
 });
 runs.recover();
-const app = createApp({ store, projects, work, runs, library, decisions, version: pkg.version, port: config.port, webDist: config.webDist });
+triage.recover();
+scheduler.start();
+const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, version: pkg.version, port: config.port, webDist: config.webDist });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(`Megalodon ${pkg.version} on http://${config.host}:${info.port} (data: ${config.dataDir})`);
@@ -69,6 +87,7 @@ function shutdown(): void {
   if (stopping) return;
   stopping = true;
   // runs keep their state as running, so the next start recovers them
+  scheduler.stop();
   void runs.shutdown();
   server.close(() => {
     db.close();

@@ -1,4 +1,4 @@
-import type { Story, Task } from '@megalodon/contracts';
+import type { Requirement, Story, Task } from '@megalodon/contracts';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useTaskDetails, useWork } from '../../data/work';
@@ -9,6 +9,7 @@ import { Button } from '../../ui/Button';
 import { Empty } from '../../ui/Empty';
 import { ErrorText } from '../../ui/Field';
 import { Drawer } from '../../ui/Overlay';
+import { WaitingFor } from '../../ui/Requirements';
 import { StatusDot } from '../../ui/StatusBadge';
 import { TaskDetailsView } from '../task/TaskDetailsView';
 import { useProject } from './ProjectLayout';
@@ -23,7 +24,7 @@ export function ProjectBoard() {
 
   if (work.error) return <ErrorText error={work.error} />;
   if (!work.data) return null;
-  const { stories, tasks } = work.data;
+  const { stories, tasks, requirements } = work.data;
 
   if (stories.length === 0 && tasks.length === 0) {
     return (
@@ -76,6 +77,7 @@ export function ProjectBoard() {
               column={column}
               tasks={byColumn.get(column) ?? []}
               stories={storiesById}
+              requirements={requirements}
               onOpen={setOpenTask}
             />
           ))}
@@ -121,11 +123,13 @@ function BoardColumn({
   column,
   tasks,
   stories,
+  requirements,
   onOpen,
 }: {
   column: Column;
   tasks: Task[];
   stories: Map<string, Story>;
+  requirements: Record<string, Requirement[]>;
   onOpen: (id: string) => void;
 }) {
   return (
@@ -147,7 +151,11 @@ function BoardColumn({
               <span>#{task.number}</span>
               {task.kind === 'manual' && <span className="rounded bg-[#ff375f]/10 px-1.5 text-[#ff375f]">You</span>}
               {task.storyId && <span className="truncate">{stories.get(task.storyId)?.title}</span>}
+              {task.front && <span className="text-accent">first</span>}
+              {(task.triage === 'pending' || task.triage === 'running') && <span>triaging…</span>}
+              {task.triage === 'failed' && task.status === 'backlog' && <span className="text-[#ff375f]">triage failed</span>}
             </div>
+            {['backlog', 'blocked', 'ready'].includes(task.status) && <WaitingFor requirements={requirements[task.id] ?? []} />}
           </button>
         ))}
       </div>

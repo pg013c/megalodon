@@ -9,6 +9,7 @@ const settings: ProjectSettings = {
   maxFixPasses: 2,
   sensitivePaths: [],
   knowledge: { location: 'repo', path: 'docs' },
+  maxParallel: null,
 };
 
 describe('projectSettingsSchema', () => {

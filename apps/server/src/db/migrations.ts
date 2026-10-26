@@ -187,4 +187,35 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX decisions_by_run ON decisions (run_id, seq);
     `,
   },
+  {
+    id: 6,
+    name: 'triage, dependencies and the scheduler',
+    sql: `
+      ALTER TABLE tasks ADD COLUMN touches TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE tasks ADD COLUMN pipeline_id TEXT NOT NULL DEFAULT 'feature';
+      ALTER TABLE tasks ADD COLUMN front_seq INTEGER;
+      ALTER TABLE tasks ADD COLUMN triage TEXT NOT NULL DEFAULT 'none';
+      ALTER TABLE tasks ADD COLUMN triage_summary TEXT;
+      CREATE TABLE dependencies (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        target_type TEXT,
+        target_id TEXT,
+        description TEXT NOT NULL,
+        command TEXT,
+        met INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        seq INTEGER NOT NULL
+      );
+      CREATE INDEX dependencies_by_task ON dependencies (task_id, seq);
+      CREATE INDEX dependencies_by_target ON dependencies (target_id);
+      CREATE TABLE scheduler (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        slots INTEGER NOT NULL,
+        paused TEXT,
+        paused_until TEXT
+      );
+    `,
+  },
 ];

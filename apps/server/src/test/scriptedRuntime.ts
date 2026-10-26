@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { zeroUsage } from '@megalodon/contracts';
+import { isLimit } from '../runtime/claude';
 import type { AgentRunInput, AgentRuntime, RuntimeEvent } from '../runtime/types';
 
 export interface Script {
@@ -44,6 +45,7 @@ export class ScriptedRuntime implements AgentRuntime {
       result: ok ? `${input.agent.name} finished.` : null,
       ...(script.output !== undefined ? { output: script.output } : {}),
       error: ok ? null : (script.error ?? 'failed'),
+      ...(!ok && isLimit(script.error ?? null) ? { limited: true } : {}),
       usage: { ...zeroUsage, costUsd: script.costUsd ?? 0.01, inputTokens: 100, outputTokens: 50 },
       durationMs: 10,
       numTurns: 2,

@@ -41,11 +41,11 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 - [x] Decisions recorded with actor, rationale and alternatives; operator override as a new decision.
 
 ## Step 5 — Triage, dependencies and scheduler
-- [ ] Triage lane and triage agent producing dependencies, touch-set, pipeline and manual tasks.
-- [ ] All four dependency kinds; story dependencies; card shows what a task needs to start.
-- [ ] Global queue with slot limit, creation-time order, per-project cap and "move to front".
-- [ ] Revalidation before start; collision detection on touch-sets.
-- [ ] Pause on plan limit and resume after it.
+- [x] Triage lane and triage agent producing dependencies, touch-set, pipeline and manual tasks.
+- [x] All four dependency kinds; story dependencies; card shows what a task needs to start.
+- [x] Global queue with slot limit, creation-time order, per-project cap and "move to front".
+- [x] Revalidation before start; collision detection on touch-sets.
+- [x] Pause on plan limit and resume after it.
 
 ## Step 6 — Merge queue
 - [ ] Serial merge queue per project: conflict detection, update from `main`, checks, gate, merge in
