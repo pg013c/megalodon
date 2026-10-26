@@ -40,6 +40,8 @@ export interface AppDeps {
   usage: UsageQueries;
   chat: ChatService;
   version: string;
+  /** Release tag the server runs from, or null in dev. */
+  release: string | null;
   port: number;
   /** Built web app to serve, or null in dev where Vite serves it. */
   webDist: string | null;
@@ -47,7 +49,7 @@ export interface AppDeps {
   keepAliveMs?: number;
 }
 
-export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage, chat, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
+export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage, chat, version, release, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
   const app = new Hono();
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 
@@ -59,7 +61,7 @@ export function createApp({ store, projects, work, runs, library, decisions, tri
   });
 
   app.get('/api/health', (c) =>
-    c.json<Health>({ ok: true, name: 'megalodon', version, lastSeq: store.lastSeq() }),
+    c.json<Health>({ ok: true, name: 'megalodon', version, release, lastSeq: store.lastSeq() }),
   );
 
   const needsYou = new NeedsYouService({

@@ -14,7 +14,13 @@ describe('HTTP app', () => {
 
     const res = await app.request(url('/api/health'));
     expect(res.status).toBe(200);
-    expect(healthSchema.parse(await res.json())).toMatchObject({ version: '0.0.0-test', lastSeq: 1 });
+    expect(healthSchema.parse(await res.json())).toMatchObject({ version: '0.0.0-test', release: null, lastSeq: 1 });
+  });
+
+  it('reports the release tag the server runs from', async () => {
+    const { app } = createTestServer(tempDir(), undefined, { release: 'v0.1.0' });
+    const res = await app.request(url('/api/health'));
+    expect(healthSchema.parse(await res.json()).release).toBe('v0.1.0');
   });
 
   it('refuses a foreign Host header', async () => {
