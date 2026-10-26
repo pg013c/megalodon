@@ -5,14 +5,15 @@ describe('staleKeys', () => {
   it('maps event types to the queries they make stale', () => {
     expect(staleKeys('project.connected')).toEqual([['projects'], ['workspace']]);
     expect(staleKeys('workspace.active_project_set')).toEqual([['projects'], ['workspace']]);
-    expect(staleKeys('task.status_changed')).toEqual([['work'], ['task'], ['queue']]);
-    expect(staleKeys('story.created')).toEqual([['work'], ['task'], ['queue']]);
-    expect(staleKeys('dependency.added')).toEqual([['work'], ['task'], ['queue']]);
-    expect(staleKeys('scheduler.paused')).toEqual([['queue']]);
-    expect(staleKeys('run.started')).toEqual([['runs'], ['queue']]);
+    expect(staleKeys('task.status_changed')).toEqual([['work'], ['task'], ['queue'], ['needs-you']]);
+    expect(staleKeys('story.created')).toEqual([['work'], ['task'], ['queue'], ['needs-you']]);
+    expect(staleKeys('dependency.added')).toEqual([['work'], ['task'], ['queue'], ['needs-you']]);
+    expect(staleKeys('scheduler.paused')).toEqual([['queue'], ['needs-you']]);
+    expect(staleKeys('merge.blocked')).toEqual([['work'], ['task'], ['queue'], ['needs-you']]);
+    expect(staleKeys('run.started')).toEqual([['runs'], ['queue'], ['needs-you']]);
     expect(staleKeys('step.completed')).toEqual([['runs']]);
     expect(staleKeys('step.message')).toEqual([]);
-    expect(staleKeys('decision.made')).toEqual([['runs']]);
+    expect(staleKeys('decision.made')).toEqual([['runs'], ['needs-you']]);
     expect(staleKeys('other.thing')).toEqual([]);
   });
 });

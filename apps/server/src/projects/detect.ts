@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Check, PackageManager, ProjectSettings } from '@megalodon/contracts';
+import { defaultPolicies, type Check, type PackageManager, type ProjectSettings } from '@megalodon/contracts';
 
 /** Scripts that become checks when the project defines them, in this order. */
 const CHECK_SCRIPTS = ['typecheck', 'lint', 'test'] as const;
@@ -27,6 +27,7 @@ export function detectSettings(root: string, baseBranch: string): ProjectSetting
     sensitivePaths: [],
     knowledge: { location: 'repo', path: 'docs' },
     maxParallel: null,
+    policies: defaultPolicies,
   };
 }
 

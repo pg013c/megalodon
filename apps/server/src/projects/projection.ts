@@ -4,8 +4,8 @@ import {
   projectDisconnectedSchema,
   projectEvents,
   projectSettingsChangedSchema,
+  projectSettingsSchema,
   type Project,
-  type ProjectSettings,
   type StoredEvent,
 } from '@megalodon/contracts';
 import type { Database } from '../db';
@@ -94,7 +94,7 @@ function toProject(row: ProjectRow): Project {
     id: row.id,
     name: row.name,
     path: row.path,
-    settings: JSON.parse(row.settings) as ProjectSettings,
+    settings: projectSettingsSchema.parse(JSON.parse(row.settings)),
     connectedAt: row.connected_at,
   };
 }

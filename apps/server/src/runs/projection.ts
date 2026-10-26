@@ -3,6 +3,7 @@ import {
   runCompletedSchema,
   runEvents,
   runStartedSchema,
+  runWaitingSchema,
   stepCompletedSchema,
   stepSessionSchema,
   stepStartedSchema,
@@ -63,6 +64,12 @@ export class RunsProjection implements Projection {
         ).run(u.costUsd, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens, s.runId);
         return;
       }
+      case runEvents.waiting:
+        db.prepare("UPDATE runs SET status = 'waiting' WHERE id = ?").run(runWaitingSchema.parse(event.data).runId);
+        return;
+      case runEvents.resumed:
+        db.prepare("UPDATE runs SET status = 'running' WHERE id = ? AND status = 'waiting'").run((event.data as { runId: string }).runId);
+        return;
       case runEvents.completed: {
         const r = runCompletedSchema.parse(event.data);
         db.prepare('UPDATE runs SET status = ?, commit_sha = ?, error = ?, ended_at = ? WHERE id = ?').run(r.status, r.commitSha, r.error, event.at, r.runId);

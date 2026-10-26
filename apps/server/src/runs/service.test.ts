@@ -79,7 +79,7 @@ describe('RunService: one agent', () => {
 
     expect(work.details(task.id).task).toMatchObject({
       status: 'needs_you',
-      statusReason: 'The pipeline has no gate; review megalodon/1-say-hello and merge it.',
+      statusReason: 'The pipeline has no review; review megalodon/1-say-hello and merge it.',
     });
   });
 
@@ -198,12 +198,13 @@ describe('RunService: the feature pipeline', () => {
 
     const made = decisions.queries.forRun(run.id);
     expect(made.map((d) => [d.kind, d.outcome, d.actor.kind])).toEqual([
+      ['plan', 'approve', 'policy'],
       ['review.verdict', 'approve', 'agent'],
       ['gate', 'pass', 'policy'],
       ['merge', 'merge', 'policy'],
     ]);
-    expect(made[1]?.rationale).toBe('Reviewer approved with 8/10 (at least 7 needed).');
-    expect(details.timeline.filter((e) => e.item.type === 'decision')).toHaveLength(3);
+    expect(made[2]?.rationale).toBe('Reviewer approved with 8/10 (at least 7 needed).');
+    expect(details.timeline.filter((e) => e.item.type === 'decision')).toHaveLength(4);
     expect(work.details(task.id).task).toMatchObject({
       status: 'merging',
       statusReason: 'Reviewer approved with 8/10 (at least 7 needed). Queued to merge.',
@@ -233,7 +234,7 @@ describe('RunService: the feature pipeline', () => {
     expect(retry.resumeSessionId).toBe('session-2');
     expect(retry.prompt).toContain("The project's checks failed");
     expect(retry.prompt).toContain('test -f hello.txt');
-    expect(decisions.queries.forRun(run.id)[0]).toMatchObject({ kind: 'retry', outcome: 'retry implement', stepId: 'checks' });
+    expect(decisions.queries.forRun(run.id).find((d) => d.kind === 'retry')).toMatchObject({ kind: 'retry', outcome: 'retry implement', stepId: 'checks' });
   });
 
   it('stops after the fix passes and hands the task to the operator', async () => {
@@ -245,7 +246,7 @@ describe('RunService: the feature pipeline', () => {
     await runs.idle();
 
     expect(runs.details(run.id).run).toMatchObject({ status: 'failed', error: 'Checks did not pass' });
-    expect(decisions.queries.forRun(run.id).map((d) => d.outcome)).toEqual(['retry implement', 'stop']);
+    expect(decisions.queries.forRun(run.id).filter((d) => d.kind === 'retry').map((d) => d.outcome)).toEqual(['retry implement', 'stop']);
     expect(work.details(task.id).task).toMatchObject({ status: 'needs_you', statusReason: 'Checks did not pass' });
   });
 
@@ -260,6 +261,7 @@ describe('RunService: the feature pipeline', () => {
     expect(agents(runtime)).toEqual(['planner', 'implementer', 'reviewer', 'implementer', 'reviewer']);
     expect(runtime.calls[3]?.prompt).toContain('End the file with a newline');
     expect(decisions.queries.forRun(run.id).map((d) => `${d.kind}:${d.outcome}`)).toEqual([
+      'plan:approve',
       'review.verdict:request_changes',
       'gate:fail',
       'retry:retry implement',

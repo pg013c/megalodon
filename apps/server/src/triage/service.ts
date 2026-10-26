@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
+  decisionEvents,
   outputContracts,
+  type StoredEvent,
   taskStream,
   workEvents,
   type Actor,
@@ -43,6 +45,7 @@ export class TriageService {
   private working: Promise<void> | null = null;
 
   constructor(private readonly deps: TriageDeps) {
+    deps.store.subscribe((event) => this.onOverride(event));
     if (deps.auto) {
       deps.store.subscribe((event) => {
         if (event.type !== workEvents.taskCreated) return;
@@ -50,6 +53,15 @@ export class TriageService {
         // tasks the triage itself creates are manual, so this never loops
         if (data.kind === 'task' && event.actor.kind === 'operator') queueMicrotask(() => this.request(data.id, SYSTEM));
       });
+    }
+  }
+
+  /** The operator lets a held task into the queue by overriding the queue decision. */
+  private onOverride(event: StoredEvent): void {
+    if (event.type !== decisionEvents.made || event.actor.kind !== 'operator') return;
+    const d = event.data as { taskId: string; kind: string; outcome: string; overrides: string | null };
+    if (d.overrides && d.kind === 'queue' && d.outcome === 'queue' && this.deps.work.queries.task(d.taskId)?.status === 'backlog') {
+      this.deps.work.transition(d.taskId, 'ready', 'Queued by you', event.actor);
     }
   }
 
@@ -136,9 +148,9 @@ export class TriageService {
         runId: null,
         stepId: null,
         kind: 'triage',
-        outcome: 'queue',
+        outcome: 'triaged',
         rationale: output.summary,
-        alternatives: ['queue', 'hold'],
+        alternatives: [],
         inputs: { ...output, notes },
         actor,
       }),
@@ -177,9 +189,33 @@ export class TriageService {
       }
     }
     events.push({ type: workEvents.triageCompleted, stream: taskStream(task.id), data: { taskId: task.id, summary: output.summary }, actor });
+    const queue = queueDecision(this.deps.projects.get(task.projectId)?.settings.policies.queue.mode ?? 'auto', output.manualTasks.length);
+    events.push(
+      this.deps.decisions.event({
+        taskId: task.id,
+        runId: null,
+        stepId: null,
+        kind: 'queue',
+        outcome: queue.outcome,
+        rationale: queue.rationale,
+        alternatives: ['queue', 'hold'],
+        actor: { kind: 'policy', policy: 'policy:queue' },
+      }),
+    );
     this.deps.store.append(events);
 
     // the scheduler decides between ready and blocked
-    if (this.deps.work.queries.task(task.id)?.status === 'backlog') this.deps.work.transition(task.id, 'ready', 'Triaged', actor);
+    if (queue.outcome === 'queue' && this.deps.work.queries.task(task.id)?.status === 'backlog') {
+      this.deps.work.transition(task.id, 'ready', 'Triaged', actor);
+    }
   }
+}
+
+/** The queue gate (ADR-0028): after triage, queue the task or hold it for the operator. */
+export function queueDecision(mode: 'auto' | 'auto_if' | 'operator', manualTasks: number) {
+  if (mode === 'operator') return { outcome: 'hold', rationale: 'The project asks you before queueing triaged tasks.' };
+  if (mode === 'auto_if' && manualTasks > 0) {
+    return { outcome: 'hold', rationale: `Triage found ${manualTasks} manual ${manualTasks === 1 ? 'task' : 'tasks'}; the project asks you before queueing such tasks.` };
+  }
+  return { outcome: 'queue', rationale: 'Queued after triage.' };
 }

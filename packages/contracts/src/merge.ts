@@ -9,6 +9,8 @@ export const mergeEvents = {
   completed: 'merge.completed',
   failed: 'merge.failed',
   recovered: 'merge.recovered',
+  pushed: 'merge.pushed',
+  pushFailed: 'merge.push_failed',
   /** The project's merges wait for the operator's checkout. */
   blocked: 'merge.blocked',
   unblocked: 'merge.unblocked',

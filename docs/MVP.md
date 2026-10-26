@@ -56,8 +56,8 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 - [x] Merged task makes its dependants `ready`.
 
 ## Step 7 — Policies and Needs you
-- [ ] Project settings section with every gate's policy and its conditions.
-- [ ] Needs you screen across projects: gates, failed runs, manual tasks.
+- [x] Project settings section with every gate's policy and its conditions.
+- [x] Needs you screen across projects: gates, failed runs, manual tasks.
 
 ## Step 8 — Overview
 - [ ] Global Overview: Needs you on top, one card per project (running tasks with their step,

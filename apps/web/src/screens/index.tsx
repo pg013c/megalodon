@@ -1,8 +1,5 @@
 import { Placeholder } from './Placeholder';
 
-export const NeedsYou = () => (
-  <Placeholder title="Needs you" purpose="Decisions, gates and manual tasks waiting for you, across projects." />
-);
 
 
 

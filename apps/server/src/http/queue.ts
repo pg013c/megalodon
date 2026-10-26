@@ -4,18 +4,27 @@ import {
   setSlotsBodySchema,
   setTouchesBodySchema,
   type Dependency,
+  type NeedsYou,
   type QueueView,
   type SchedulerState,
   type Task,
 } from '@megalodon/contracts';
 import type { Hono } from 'hono';
 import type { MergeService } from '../merge/service';
+import type { NeedsYouService } from '../needsYou/service';
 import type { Scheduler } from '../scheduler/service';
 import type { TriageService } from '../triage/service';
 import type { WorkService } from '../work/service';
 import { readBody } from './body';
 
-export function queueRoutes(app: Hono, work: WorkService, triage: TriageService, scheduler: Scheduler, merges: MergeService): void {
+export function queueRoutes(
+  app: Hono,
+  work: WorkService,
+  triage: TriageService,
+  scheduler: Scheduler,
+  merges: MergeService,
+  needsYou: NeedsYouService,
+): void {
   const task = (id: string) => work.queries.task(id)!;
 
   app.post('/api/tasks/:id/triage', (c) => {
@@ -51,6 +60,7 @@ export function queueRoutes(app: Hono, work: WorkService, triage: TriageService,
   app.post('/api/dependencies/:id/met', (c) => c.json<Dependency>(work.markMet(c.req.param('id'))));
 
   app.get('/api/queue', (c) => c.json<QueueView>(scheduler.view()));
+  app.get('/api/needs-you', (c) => c.json<NeedsYou>(needsYou.view()));
   app.put('/api/queue/slots', async (c) => {
     const { slots } = await readBody(c, setSlotsBodySchema);
     return c.json<SchedulerState>(scheduler.setSlots(slots));

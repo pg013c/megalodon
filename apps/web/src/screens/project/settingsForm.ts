@@ -1,4 +1,4 @@
-import type { Check, ProjectSettings } from '@megalodon/contracts';
+import type { Check, Policies, ProjectSettings } from '@megalodon/contracts';
 import { linesToList, listToLines } from '../../lib/format';
 
 /** The settings as the form edits them: lists as multi-line text, numbers as strings. */
@@ -12,6 +12,7 @@ export interface SettingsForm {
   knowledgePath: string;
   /** Empty: no per-project limit. */
   maxParallel: string;
+  policies: Policies;
 }
 
 export function toForm(s: ProjectSettings): SettingsForm {
@@ -24,6 +25,7 @@ export function toForm(s: ProjectSettings): SettingsForm {
     knowledgeLocation: s.knowledge.location,
     knowledgePath: s.knowledge.path,
     maxParallel: s.maxParallel === null ? '' : String(s.maxParallel),
+    policies: s.policies,
   };
 }
 
@@ -40,5 +42,6 @@ export function fromForm(form: SettingsForm, packageManager: ProjectSettings['pa
     sensitivePaths: linesToList(form.sensitivePaths),
     knowledge: { location: form.knowledgeLocation, path: form.knowledgePath.trim() },
     maxParallel: form.maxParallel.trim() === '' ? null : Number(form.maxParallel),
+    policies: form.policies,
   };
 }

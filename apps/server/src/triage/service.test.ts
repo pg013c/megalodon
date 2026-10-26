@@ -45,9 +45,10 @@ describe('TriageService', () => {
       ['code', '#1 Users', false],
     ]);
     expect(work.queries.task(details.requirements[0]!.ref!.id)).toMatchObject({ kind: 'manual', status: 'todo', description: 'Dashboard → Developers → API keys' });
+    expect(decisions.queries.forTask(payments.id).map((d) => `${d.kind}:${d.outcome}`)).toEqual(['triage:triaged', 'queue:queue']);
     expect(decisions.queries.forTask(payments.id)[0]).toMatchObject({
       kind: 'triage',
-      outcome: 'queue',
+      outcome: 'triaged',
       actor: { kind: 'agent', agentId: 'triage' },
       inputs: expect.objectContaining({ notes: ['#99 does not exist; ignored.'] }),
     });

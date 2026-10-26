@@ -53,6 +53,14 @@ export class DecisionsQueries {
     return (this.db.prepare('SELECT * FROM decisions WHERE run_id = ? ORDER BY seq').all(runId) as unknown as DecisionRow[]).map(toDecision);
   }
 
+  /** The decision of `kind` in effect for a task, across its runs and triage. */
+  effectiveForTask(taskId: string, kind: string): Decision | null {
+    const row = this.db
+      .prepare('SELECT * FROM decisions WHERE task_id = ? AND kind = ? AND superseded_by IS NULL ORDER BY seq DESC LIMIT 1')
+      .get(taskId, kind);
+    return row ? toDecision(row as unknown as DecisionRow) : null;
+  }
+
   /** The decision of `kind` in effect for a run: the latest one nothing has overridden. */
   effective(runId: string, kind: string): Decision | null {
     const row = this.db

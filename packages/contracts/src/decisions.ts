@@ -38,4 +38,8 @@ export const decisionKindLabel: Record<string, string> = {
   'review.verdict': 'Review verdict',
   gate: 'Gate',
   retry: 'Retry',
+  merge: 'Merge',
+  plan: 'Plan approval',
+  queue: 'Queue',
+  triage: 'Triage',
 };

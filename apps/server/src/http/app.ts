@@ -11,6 +11,7 @@ import type { DecisionService } from '../decisions/service';
 import type { Library } from '../library/library';
 import type { RunService } from '../runs/service';
 import type { MergeService } from '../merge/service';
+import { NeedsYouService } from '../needsYou/service';
 import type { Scheduler } from '../scheduler/service';
 import type { TriageService } from '../triage/service';
 import type { WorkService } from '../work/service';
@@ -53,11 +54,19 @@ export function createApp({ store, projects, work, runs, library, decisions, tri
     c.json<Health>({ ok: true, name: 'megalodon', version, lastSeq: store.lastSeq() }),
   );
 
+  const needsYou = new NeedsYouService({
+    work: work.queries,
+    runs: runs.queries,
+    decisions: decisions.queries,
+    projects: projects.queries,
+    merges,
+    scheduler,
+  });
   projectRoutes(app, projects);
   workRoutes(app, work);
   runRoutes(app, runs, library);
   decisionRoutes(app, decisions);
-  queueRoutes(app, work, triage, scheduler, merges);
+  queueRoutes(app, work, triage, scheduler, merges, needsYou);
 
   // Live event feed from now on. A client that sends Last-Event-ID (a reconnecting EventSource) or
   // ?after=<seq> first receives what it missed.

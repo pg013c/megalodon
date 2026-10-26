@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   decisionEvents,
+  type Policies,
   outputContracts,
   runEvents,
   runStream,
@@ -30,6 +31,7 @@ import type { AgentRuntime } from '../runtime/types';
 import type { WorkService } from '../work/service';
 import { runCommand } from './command';
 import { changedFiles, globToRegExp } from '../merge/git';
+import { touchesOverlap } from '../work/readiness';
 import { addWorktree, branchDiff, commitAll, head, revParse, taskBranch, worktreeExists } from './git';
 import { buildPlan, runPosition, type RunPosition } from './plan';
 import type { RunsQueries } from './projection';
@@ -69,6 +71,8 @@ interface Active {
 /** How one step attempt ended, for the flow of the run. */
 type StepOutcome =
   | { kind: 'passed' }
+  /** A gate holds the run for the operator (the plan); it continues when they approve. */
+  | { kind: 'waiting'; reason: string }
   /** Checks failed or a gate said no: the step's onFail rule decides. */
   | { kind: 'rejected'; feedback: string; events: NewEvent[] }
   | { kind: 'error'; error: string }
@@ -88,13 +92,23 @@ type Ending =
 export class RunService {
   private readonly active = new Map<string, Active>();
 
+  readonly queries: RunsQueries;
+
   constructor(private readonly deps: RunServiceDeps) {
-    // a task cancelled while its run works stops the run
+    this.queries = deps.runs;
     deps.store.subscribe((event) => {
-      if (event.type !== workEvents.taskStatusChanged) return;
-      const { id, to } = event.data as { id: string; to: string };
-      if (to !== 'cancelled') return;
-      for (const run of deps.runs.forTask(id)) if (run.status === 'running') this.abort(run.id, 'task_cancelled');
+      // a task cancelled while its run works, or waits, stops the run
+      if (event.type === workEvents.taskStatusChanged && (event.data as { to: string }).to === 'cancelled') {
+        for (const run of deps.runs.forTask((event.data as { id: string }).id)) {
+          if (run.status === 'running') this.abort(run.id, 'task_cancelled');
+          if (run.status === 'waiting') this.finish(run, { status: 'cancelled', error: 'Task cancelled' });
+        }
+      }
+      // approving a held plan continues its run
+      if (event.type === decisionEvents.made && event.actor.kind === 'operator') {
+        const d = event.data as { kind: string; outcome: string; overrides: string | null; runId: string | null };
+        if (d.overrides && d.kind === 'plan' && d.outcome === 'approve' && d.runId) queueMicrotask(() => this.continueRun(d.runId!));
+      }
     });
   }
 
@@ -158,7 +172,7 @@ export class RunService {
   /** The operator stops a run; its task fails and can be retried. */
   stop(runId: string): Run {
     const run = this.run(runId);
-    if (run.status !== 'running') throw new AppError(409, 'RUN_NOT_RUNNING', 'The run is not running');
+    if (run.status !== 'running' && run.status !== 'waiting') throw new AppError(409, 'RUN_NOT_RUNNING', 'The run is not running');
     if (!this.abort(runId, 'operator')) this.finish(run, { status: 'cancelled', error: 'Stopped by you' });
     return this.run(runId);
   }
@@ -238,6 +252,7 @@ export class RunService {
       resume = null;
       if (active.stop === 'shutdown') return;
       if (outcome.kind === 'stopped') return this.finish(run, stopped(active));
+      if (outcome.kind === 'waiting') return this.wait(run, outcome.reason);
       if (outcome.kind === 'error') return this.finish(run, { status: 'failed', error: outcome.error, taskTo: 'failed' });
 
       if (step.kind === 'agent') await commitAll(run.worktreePath, commitMessage(task, step, attempt, this.lastResult(runId, step.stepId)));
@@ -294,17 +309,14 @@ export class RunService {
    * sensitive path. Recorded as a decision the operator can override (ADR-0027).
    */
   private async mergeDecision(run: Run, task: Task, project: Project) {
+    const policy = project.settings.policies.merge;
     const gate = this.deps.decisions.queries.effective(run.id, 'gate');
+    const verdict = this.deps.decisions.queries.effective(run.id, 'review.verdict');
+    const score = typeof verdict?.inputs.score === 'number' ? verdict.inputs.score : null;
     const changed = await changedFiles(run.worktreePath, run.baseSha);
     const sensitive = changed.filter((file) => project.settings.sensitivePaths.some((glob) => globToRegExp(glob).test(file)));
-    const merge = gate?.outcome === 'pass' && sensitive.length === 0;
-    const rationale = !gate
-      ? `The pipeline has no gate; review ${run.branch} and merge it.`
-      : gate.outcome !== 'pass'
-        ? `${gate.rationale} Review ${run.branch}.`
-        : sensitive.length
-          ? `${gate.rationale} It changes sensitive paths (${sensitive.slice(0, 3).join(', ')}${sensitive.length > 3 ? ', …' : ''}); review ${run.branch} and merge it.`
-          : `${gate.rationale} Queued to merge.`;
+    const list = sensitive.slice(0, 3).join(', ') + (sensitive.length > 3 ? ', …' : '');
+    const { merge, rationale } = mergeRule(policy, { gate: gate?.outcome ?? null, gateRationale: gate?.rationale ?? null, verdict: verdict?.outcome ?? null, score, sensitive: list, branch: run.branch });
     this.deps.store.append([
       this.deps.decisions.event({
         taskId: task.id,
@@ -314,8 +326,8 @@ export class RunService {
         outcome: merge ? 'merge' : 'hold',
         rationale,
         alternatives: ['merge', 'hold'],
-        inputs: { gate: gate?.outcome ?? null, sensitive, changed: changed.length },
-        actor: { kind: 'policy', policy: 'merge-gate' },
+        inputs: { gate: gate?.outcome ?? null, score, sensitive, changed: changed.length, policy: policy.mode },
+        actor: { kind: 'policy', policy: 'policy:merge' },
       }),
     ]);
     return { outcome: merge ? 'merge' : 'hold', rationale };
@@ -432,6 +444,7 @@ export class RunService {
         data: { ...completed(run.id, step.stepId, attempt, 'succeeded', event.usage, event.durationMs, event.numTurns, event.result, null), ...(output !== undefined ? { output } : {}) },
         actor: SYSTEM,
       };
+      if (agent.output === 'plan') return this.approvePlan(run, task, project, step, output as PlanOutput, done);
       if (agent.output !== 'review') {
         this.deps.store.append([done]);
         return { kind: 'passed' };
@@ -439,6 +452,49 @@ export class RunService {
       return this.judge(run, task, step, agent, output as ReviewOutput, done);
     }
     return { kind: 'error', error: `${step.name}: the agent ended without a result` };
+  }
+
+  /** The plan gate (ADR-0028): go on, or hold the run until the operator approves the plan. */
+  private approvePlan(run: Run, task: Task, project: Project, step: Extract<PlannedStep, { kind: 'agent' }>, plan: PlanOutput, done: NewEvent): StepOutcome {
+    const mode = project.settings.policies.plan.mode;
+    const sensitive = touchesOverlap(plan.touches, project.settings.sensitivePaths);
+    const hold = mode === 'operator' || (mode === 'auto_if' && sensitive);
+    const rationale =
+      mode === 'operator'
+        ? 'The project asks you to approve every plan.'
+        : hold
+          ? 'The plan touches sensitive paths; approve it to continue.'
+          : 'Plan approved by the project policy.';
+    this.deps.store.append([
+      done,
+      this.deps.decisions.event({
+        taskId: task.id,
+        runId: run.id,
+        stepId: step.stepId,
+        kind: 'plan',
+        outcome: hold ? 'hold' : 'approve',
+        rationale,
+        alternatives: ['approve', 'hold'],
+        inputs: { touches: plan.touches },
+        actor: { kind: 'policy', policy: 'policy:plan' },
+      }),
+    ]);
+    return hold ? { kind: 'waiting', reason: `The plan waits for your approval: ${plan.summary}` } : { kind: 'passed' };
+  }
+
+  /** Parks a run at a gate: it takes no slot and its task waits for the operator. */
+  private wait(run: Run, reason: string): void {
+    this.append(run.id, runEvents.waiting, { runId: run.id, reason });
+    if (this.task(run.taskId).status === 'running') this.deps.work.transition(run.taskId, 'needs_you', reason, SYSTEM);
+  }
+
+  /** The operator approved: the parked run continues where it stopped. */
+  private continueRun(runId: string): void {
+    const run = this.deps.runs.run(runId);
+    if (!run || run.status !== 'waiting' || this.active.has(runId)) return;
+    this.append(runId, runEvents.resumed, { runId, stepId: 'next', reason: 'Approved by you' });
+    if (this.task(run.taskId).status === 'needs_you') this.deps.work.transition(run.taskId, 'running', 'Plan approved by you', OPERATOR);
+    this.launch(runId, false);
   }
 
   /** The reviewer's verdict, and the step's gate on it, as decisions. */
@@ -557,6 +613,23 @@ export class RunService {
     if (!project) throw new AppError(404, 'PROJECT_NOT_FOUND', `No project ${id}`);
     return project;
   }
+}
+
+/** The merge gate (ADR-0028): queue a finished run to merge, or hold it for the operator. */
+export function mergeRule(
+  policy: Policies['merge'],
+  facts: { gate: string | null; gateRationale: string | null; verdict: string | null; score: number | null; sensitive: string; branch: string },
+): { merge: boolean; rationale: string } {
+  const review = `review ${facts.branch} and merge it`;
+  if (policy.mode === 'operator') return { merge: false, rationale: `The project asks you to merge; ${review}.` };
+  if (policy.mode === 'auto') return { merge: true, rationale: `${facts.gateRationale ? `${facts.gateRationale} ` : ''}Queued to merge.` };
+  if (facts.gate === null && facts.score === null) return { merge: false, rationale: `The pipeline has no review; ${review}.` };
+  if (facts.gate !== null && facts.gate !== 'pass') return { merge: false, rationale: `${facts.gateRationale} Review ${facts.branch}.` };
+  if (facts.verdict !== 'approve' || facts.score === null || facts.score < policy.minScore) {
+    return { merge: false, rationale: `The review scored ${facts.score ?? 'nothing'}; the project merges by itself from ${policy.minScore}. ${review[0]!.toUpperCase()}${review.slice(1)}.` };
+  }
+  if (facts.sensitive) return { merge: false, rationale: `${facts.gateRationale ?? 'Approved.'} It changes sensitive paths (${facts.sensitive}); ${review}.` };
+  return { merge: true, rationale: `${facts.gateRationale ?? `Approved with ${facts.score}/10.`} Queued to merge.` };
 }
 
 function completed(

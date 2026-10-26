@@ -116,15 +116,19 @@ dependencies and touch-set against the current `main`. If something changed, the
 
 ## 6. Gates and policies
 
-| Gate | Default | Example `auto-if` condition |
+Each project sets every gate in its settings (ADR-0028):
+
+| Gate | Default | `auto-if` condition |
 |---|---|---|
 | Queue after triage | `auto` | Triage found no manual tasks. |
-| Plan approval | `auto` | Touch-set avoids sensitive paths. |
-| Merge | `auto-if` | Checks pass, review score ≥ 7, no sensitive paths. |
+| Plan approval | `auto` | The plan's touch-set avoids sensitive paths. |
+| Merge | `auto-if` | The gate passed, the review approved with at least the minimum score (7), no sensitive path changed. |
 | Conflict resolution | `auto` (2 attempts) | — |
 | Push `main` to remote | `operator` | — |
 
-A gate that does not pass automatically puts the task in `needs_you`.
+A gate that does not pass automatically records a `hold` decision and puts the task in
+`needs_you`; the operator lets the work go on by overriding that decision. A run held at the plan
+waits (`waiting`) without taking a slot.
 
 ## 7. Decisions
 

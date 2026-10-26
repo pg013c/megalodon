@@ -4,6 +4,7 @@ import { useBranches, useDisconnectProject, useUpdateSettings } from '../../data
 import { Button } from '../../ui/Button';
 import { ErrorText, Field, Input, TextArea } from '../../ui/Field';
 import { Modal } from '../../ui/Overlay';
+import { PoliciesSection } from './PoliciesSection';
 import { useProject } from './ProjectLayout';
 import { fromForm, toForm, type SettingsForm } from './settingsForm';
 
@@ -90,6 +91,10 @@ export function ProjectSettingsScreen() {
         <Field label="Fix passes" hint="How many times an agent may try to fix failing checks (0–5).">
           <Input value={form.maxFixPasses} onChange={(e) => set('maxFixPasses', e.target.value)} inputMode="numeric" className="w-20" />
         </Field>
+      </Section>
+
+      <Section title="Automation" description="What happens without you, and where Megalodon stops to ask.">
+        <PoliciesSection policies={form.policies} onChange={(policies) => set('policies', policies)} />
       </Section>
 
       <Section title="Parallel runs" description="How many of this project's tasks may run at once. Empty: only the global limit applies.">

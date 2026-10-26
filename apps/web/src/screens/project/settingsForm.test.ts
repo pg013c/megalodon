@@ -1,4 +1,4 @@
-import type { ProjectSettings } from '@megalodon/contracts';
+import { defaultPolicies, type ProjectSettings } from '@megalodon/contracts';
 import { describe, expect, it } from 'vitest';
 import { fromForm, toForm } from './settingsForm';
 
@@ -11,6 +11,7 @@ const settings: ProjectSettings = {
   sensitivePaths: ['src/payments/**', 'migrations/**'],
   knowledge: { location: 'repo', path: 'docs' },
   maxParallel: null,
+  policies: defaultPolicies,
 };
 
 describe('settings form', () => {

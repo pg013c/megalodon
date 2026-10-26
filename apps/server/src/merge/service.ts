@@ -15,6 +15,7 @@ import {
 } from '@megalodon/contracts';
 import type { DecisionService } from '../decisions/service';
 import { AppError } from '../errors';
+import { git, GitError } from '../git/git';
 import type { EventStore } from '../events/store';
 import type { Library } from '../library/library';
 import type { ProjectsQueries } from '../projects/projection';
@@ -41,7 +42,6 @@ import type { MergeQueries } from './projection';
 
 const MERGE_QUEUE: Actor = { kind: 'policy', policy: 'merge-queue' };
 const OPERATOR: Actor = { kind: 'operator' };
-const RESOLVE_ATTEMPTS = 2;
 const TICK_EVERY_MS = 15_000;
 
 export interface MergeDeps {
@@ -57,7 +57,7 @@ export interface MergeDeps {
   env: Record<string, string>;
 }
 
-type Outcome = { ok: true; sha: string } | { ok: false; reason: string };
+type Outcome = { ok: true; sha: string; pushed?: string | null } | { ok: false; reason: string };
 
 /**
  * The merge queue, serial per project (ADR-0008, ADR-0014): bring the task's branch up to date
@@ -241,14 +241,34 @@ export class MergeService {
     }
     const sha = (await branchTip(project.path, project.settings.baseBranch))!;
     await this.cleanUp(project, run);
-    return { ok: true, sha };
+    return { ok: true, sha, pushed: await this.push(task, project) };
+  }
+
+  /** The push gate (ADR-0028): push the base branch after a merge, or leave it to the operator. */
+  private async push(task: Task, project: Project): Promise<string | null> {
+    const policy = project.settings.policies.push;
+    if (policy.mode !== 'auto') return null;
+    try {
+      await git(project.path, ['push', policy.remote, project.settings.baseBranch], { timeoutMs: 120_000 });
+      this.event(task, mergeEvents.pushed, { remote: policy.remote });
+      return `pushed to ${policy.remote}`;
+    } catch (error) {
+      const reason = error instanceof GitError ? error.stderr.trim() || error.message : (error as Error).message;
+      this.event(task, mergeEvents.pushFailed, { remote: policy.remote, reason });
+      return `push to ${policy.remote} failed: ${reason.split('\n')[0]}`;
+    }
   }
 
   /** The resolver agent gets two attempts; whatever still conflicts goes to the operator. */
   private async resolve(task: Task, project: Project, run: Run, conflicts: string[]): Promise<Outcome> {
+    const policy = project.settings.policies.conflicts;
+    if (policy.mode === 'operator') {
+      this.event(task, mergeEvents.conflict, { runId: run.id, files: conflicts, attempt: 0 });
+      return { ok: false, reason: `Conflicts with ${project.settings.baseBranch} in ${conflicts.join(', ')}; the project asks you to resolve conflicts.` };
+    }
     const agent = this.deps.library.agent('resolver');
     let remaining = conflicts;
-    for (let attempt = 1; attempt <= RESOLVE_ATTEMPTS; attempt++) {
+    for (let attempt = 1; attempt <= policy.attempts; attempt++) {
       this.event(task, mergeEvents.conflict, { runId: run.id, files: remaining, attempt });
       const prompt = [
         `Task #${task.number} in ${project.name}: ${task.title}`,
@@ -309,7 +329,7 @@ export class MergeService {
     if (!outcome.ok && outcome.reason === 'blocked') return;
     if (outcome.ok) {
       this.event(task, mergeEvents.completed, { runId: run?.id ?? null, sha: outcome.sha });
-      this.deps.work.transition(task.id, 'done', `Merged as ${outcome.sha.slice(0, 8)}`, MERGE_QUEUE);
+      this.deps.work.transition(task.id, 'done', `Merged as ${outcome.sha.slice(0, 8)}${outcome.pushed ? `; ${outcome.pushed}` : ''}`, MERGE_QUEUE);
     } else {
       this.event(task, mergeEvents.failed, { runId: run?.id ?? null, reason: outcome.reason });
       this.deps.work.transition(task.id, 'needs_you', outcome.reason, MERGE_QUEUE);

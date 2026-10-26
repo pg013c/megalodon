@@ -24,6 +24,28 @@ export const knowledgeSchema = z.object({
 });
 export type Knowledge = z.infer<typeof knowledgeSchema>;
 
+const mode3 = z.enum(['auto', 'auto_if', 'operator']);
+const mode2 = z.enum(['auto', 'operator']);
+
+/**
+ * One policy per gate (CONCEPTS.md §6, ADR-0028): `auto` passes, `operator` asks you, `auto_if`
+ * passes when the gate's conditions hold.
+ */
+export const policiesSchema = z.object({
+  /** After triage. auto_if: triage found no manual tasks. */
+  queue: z.object({ mode: mode3 }).default({ mode: 'auto' }),
+  /** After the plan step. auto_if: the plan touches no sensitive path. */
+  plan: z.object({ mode: mode3 }).default({ mode: 'auto' }),
+  /** After a run. auto_if: review approved with at least `minScore` and no sensitive path changed. */
+  merge: z.object({ mode: mode3, minScore: z.number().int().min(0).max(10) }).default({ mode: 'auto_if', minScore: 7 }),
+  /** In the merge queue. auto: the resolver agent tries `attempts` times. */
+  conflicts: z.object({ mode: mode2, attempts: z.number().int().min(1).max(5) }).default({ mode: 'auto', attempts: 2 }),
+  /** After a merge: push the base branch to `remote`. */
+  push: z.object({ mode: mode2, remote: z.string().trim().min(1) }).default({ mode: 'operator', remote: 'origin' }),
+});
+export type Policies = z.infer<typeof policiesSchema>;
+export const defaultPolicies: Policies = policiesSchema.parse({});
+
 export const projectSettingsSchema = z
   .object({
     /** The branch tasks start from and merge into; `main` unless the project uses another name. */
@@ -38,6 +60,7 @@ export const projectSettingsSchema = z
     knowledge: knowledgeSchema,
     /** At most this many runs of the project at once (CONCEPTS.md §5); null: only the global limit. */
     maxParallel: z.number().int().min(1).max(50).nullable().default(null),
+    policies: policiesSchema.default(defaultPolicies),
   })
   .refine((s) => new Set(s.checks.map((c) => c.name)).size === s.checks.length, {
     message: 'Check names must be unique',

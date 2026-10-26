@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router';
 import { useLiveUpdates } from '../data/live';
+import { useNeedsYou } from '../data/needsYou';
 import { CommandPalette } from './CommandPalette';
 import { ConnectProjectDialog } from './ConnectProjectDialog';
 import { NewItemDialog } from './NewItemDialog';
@@ -8,6 +9,8 @@ import { screens } from './screens';
 
 export function Layout() {
   useLiveUpdates();
+  const needs = useNeedsYou();
+  const waiting = (needs.data?.items.length ?? 0) + (needs.data?.mergeBlocked.length ?? 0);
   return (
     <div className="flex h-full flex-col">
       <header className="sticky top-0 z-10 border-b border-line bg-surface/80 backdrop-blur-xl">
@@ -29,6 +32,9 @@ export function Layout() {
                   }
                 >
                   {screen.title}
+                  {screen.id === 'needs-you' && waiting > 0 && (
+                    <span className="ml-1.5 rounded-full bg-[#ff375f] px-1.5 text-[11px] font-medium text-white">{waiting}</span>
+                  )}
                 </NavLink>
               ))}
           </nav>

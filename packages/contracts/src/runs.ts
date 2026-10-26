@@ -3,7 +3,8 @@ import { checkSchema } from './projects';
 import { decisionSchema } from './decisions';
 import { gateSchema } from './pipelines';
 
-export const runStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
+/** `waiting`: stopped at a gate for the operator (the plan); it takes no slot. */
+export const runStatusSchema = z.enum(['running', 'waiting', 'succeeded', 'failed', 'cancelled']);
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
 export const usageSchema = z.object({
@@ -109,6 +110,7 @@ export const runEvents = {
   started: 'run.started',
   resumed: 'run.resumed',
   completed: 'run.completed',
+  waiting: 'run.waiting',
   stepStarted: 'step.started',
   stepSession: 'step.session',
   stepMessage: 'step.message',
@@ -151,9 +153,10 @@ export const runStartedSchema = z.preprocess(legacyAgentRun, z.object({
   plan: z.array(plannedStepSchema),
 }));
 export const runResumedSchema = z.object({ runId: z.string(), stepId: z.string(), reason: z.string() });
+export const runWaitingSchema = z.object({ runId: z.string(), reason: z.string() });
 export const runCompletedSchema = z.object({
   runId: z.string(),
-  status: runStatusSchema.exclude(['running']),
+  status: runStatusSchema.exclude(['running', 'waiting']),
   commitSha: z.string().nullable(),
   error: z.string().nullable(),
 });
@@ -175,7 +178,7 @@ export const stepCompletedSchema = z.object({
   attempt: z.number().int().positive().default(1),
   /** For agents with an output contract: the validated output. */
   output: z.unknown().optional(),
-  status: runStatusSchema.exclude(['running']),
+  status: runStatusSchema.exclude(['running', 'waiting']),
   usage: usageSchema,
   durationMs: z.number().int(),
   numTurns: z.number().int().nullable(),
