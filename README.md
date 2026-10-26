@@ -4,7 +4,7 @@ A private, local command centre for one operator who leads many software project
 agents: dependency-aware task queue, agent-based pipelines in isolated worktrees, automatic merges
 gated by policy, a full decision log, and one calm interface for all of it.
 
-Status: MVP step 3 (steps 0–2 are done). Start with [`docs/PRD.md`](docs/PRD.md), then [`docs/CONCEPTS.md`](docs/CONCEPTS.md),
+Status: MVP step 4 (steps 0–3 are done). Start with [`docs/PRD.md`](docs/PRD.md), then [`docs/CONCEPTS.md`](docs/CONCEPTS.md),
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/MVP.md`](docs/MVP.md). Decisions are in
 [`docs/adr/`](docs/adr/).
 

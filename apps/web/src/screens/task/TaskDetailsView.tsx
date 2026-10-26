@@ -6,6 +6,7 @@ import { statusLabel } from '../../lib/status';
 import { Button } from '../../ui/Button';
 import { ErrorText, Input, TextArea } from '../../ui/Field';
 import { StatusBadge } from '../../ui/StatusBadge';
+import { TaskRuns } from './TaskRuns';
 
 /** One task: what it is, where it stands, what you can do, and what happened to it. */
 export function TaskDetailsView({ details }: { details: TaskDetails }) {
@@ -19,6 +20,7 @@ export function TaskDetailsView({ details }: { details: TaskDetails }) {
       </div>
       {task.statusReason && <p className="rounded-lg bg-canvas px-3 py-2 text-[13px] text-muted">{task.statusReason}</p>}
       <Actions task={task} />
+      <TaskRuns task={task} />
       <Editor task={task} />
       <History entries={details.history} />
     </div>

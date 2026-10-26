@@ -7,6 +7,9 @@ describe('staleKeys', () => {
     expect(staleKeys('workspace.active_project_set')).toEqual([['projects'], ['workspace']]);
     expect(staleKeys('task.status_changed')).toEqual([['work'], ['task']]);
     expect(staleKeys('story.created')).toEqual([['work'], ['task']]);
-    expect(staleKeys('run.started')).toEqual([]);
+    expect(staleKeys('run.started')).toEqual([['runs']]);
+    expect(staleKeys('step.completed')).toEqual([['runs']]);
+    expect(staleKeys('step.message')).toEqual([]);
+    expect(staleKeys('other.thing')).toEqual([]);
   });
 });

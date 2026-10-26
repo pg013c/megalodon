@@ -28,6 +28,7 @@ export const statusLabel: Record<string, string> = {
   cancelled: 'Cancelled',
   todo: 'To do',
   verified: 'Verified',
+  succeeded: 'Succeeded',
 };
 
 export const statusDot: Record<string, string> = {
@@ -42,4 +43,5 @@ export const statusDot: Record<string, string> = {
   failed: 'bg-[#ff3b30]',
   cancelled: 'bg-line',
   todo: 'bg-[#ff375f]',
+  succeeded: 'bg-[#30d158]',
 };

@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
-import { Library, NeedsYou, NotFound } from './screens';
+import { NeedsYou, NotFound } from './screens';
+import { LibraryScreen } from './screens/library/LibraryScreen';
+import { RunScreen } from './screens/run/RunScreen';
 import { Overview } from './screens/Overview';
 import { ProjectBoard } from './screens/project/ProjectBoard';
 import { ProjectBranches } from './screens/project/ProjectBranches';
@@ -36,7 +38,8 @@ const router = createBrowserRouter([
         ],
       },
       { path: '/needs-you', element: <NeedsYou /> },
-      { path: '/library/*', element: <Library /> },
+      { path: '/library/*', element: <LibraryScreen /> },
+      { path: '/runs/:runId', element: <RunScreen /> },
       { path: '/tasks/:taskId', element: <TaskScreen /> },
       { path: '*', element: <NotFound /> },
     ],

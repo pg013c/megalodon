@@ -28,11 +28,11 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 - [x] Board of the active project by status; manual tasks visible and completable.
 
 ## Step 3 — Agent runtime and runs
-- [ ] `AgentRuntime` with the Claude Agent SDK implementation.
-- [ ] Agent definitions loaded from `library/` and the data-dir library; content hash recorded.
-- [ ] A single-agent run in its own worktree, events streamed to the UI live.
-- [ ] Cost, tokens and duration recorded per step.
-- [ ] Runs active at shutdown are resumed or failed with a reason on startup.
+- [x] `AgentRuntime` with the Claude Agent SDK implementation.
+- [x] Agent definitions loaded from `library/` and the data-dir library; content hash recorded.
+- [x] A single-agent run in its own worktree, events streamed to the UI live.
+- [x] Cost, tokens and duration recorded per step.
+- [x] Runs active at shutdown are resumed or failed with a reason on startup.
 
 ## Step 4 — Pipelines and decisions
 - [ ] Pipeline YAML with agent steps, checks, retry and gate rules.

@@ -75,4 +75,56 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX tasks_by_story ON tasks (story_id);
     `,
   },
+  {
+    id: 4,
+    name: 'runs and steps',
+    sql: `
+      CREATE TABLE runs (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        worktree_path TEXT NOT NULL,
+        base_ref TEXT NOT NULL,
+        base_sha TEXT NOT NULL,
+        plan TEXT NOT NULL,
+        commit_sha TEXT,
+        error TEXT,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        created_seq INTEGER NOT NULL
+      );
+      CREATE INDEX runs_by_task ON runs (task_id, created_seq);
+      CREATE TABLE run_steps (
+        run_id TEXT NOT NULL REFERENCES runs (id),
+        step_id TEXT NOT NULL,
+        idx INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        agent_id TEXT,
+        agent_version TEXT,
+        status TEXT NOT NULL,
+        session_id TEXT,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        duration_ms INTEGER,
+        num_turns INTEGER,
+        result TEXT,
+        error TEXT,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (run_id, step_id)
+      );
+    `,
+  },
 ];

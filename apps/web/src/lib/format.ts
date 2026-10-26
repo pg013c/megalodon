@@ -35,3 +35,23 @@ export const linesToList = (text: string) =>
     .map((l) => l.trim())
     .filter(Boolean);
 export const listToLines = (list: readonly string[]) => list.join('\n');
+
+/** 2m 14s, 1h 3m, 850ms. */
+export function duration(ms: number | null): string {
+  if (ms === null) return '—';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+export const cost = (usd: number) => (usd === 0 ? '$0' : usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`);
+
+/** 950, 12.3k, 1.2M. */
+export function tokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}

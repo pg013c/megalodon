@@ -7,14 +7,19 @@ import { streamSSE } from 'hono/streaming';
 import { AppError, type ErrorStatus } from '../errors';
 import type { EventStore } from '../events/store';
 import type { ProjectService } from '../projects/service';
+import type { AgentLibrary } from '../library/agents';
+import type { RunService } from '../runs/service';
 import type { WorkService } from '../work/service';
 import { projectRoutes } from './projects';
+import { runRoutes } from './runs';
 import { workRoutes } from './work';
 
 export interface AppDeps {
   store: EventStore;
   projects: ProjectService;
   work: WorkService;
+  runs: RunService;
+  library: AgentLibrary;
   version: string;
   port: number;
   /** Built web app to serve, or null in dev where Vite serves it. */
@@ -23,7 +28,7 @@ export interface AppDeps {
   keepAliveMs?: number;
 }
 
-export function createApp({ store, projects, work, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
+export function createApp({ store, projects, work, runs, library, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
   const app = new Hono();
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 
@@ -40,6 +45,7 @@ export function createApp({ store, projects, work, version, port, webDist, keepA
 
   projectRoutes(app, projects);
   workRoutes(app, work);
+  runRoutes(app, runs, library);
 
   // Live event feed from now on. A client that sends Last-Event-ID (a reconnecting EventSource) or
   // ?after=<seq> first receives what it missed.
