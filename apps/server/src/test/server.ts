@@ -12,6 +12,7 @@ import { RunsProjection, RunsQueries } from '../runs/projection';
 import { RunService } from '../runs/service';
 import type { AgentRuntime } from '../runtime/types';
 import { MergeProjection, MergeQueries } from '../merge/projection';
+import { UsageProjection, UsageQueries } from '../overview/usage';
 import { MergeService } from '../merge/service';
 import { SchedulerProjection, SchedulerQueries } from '../scheduler/projection';
 import { Scheduler } from '../scheduler/service';
@@ -28,7 +29,7 @@ const builtinLibrary = fileURLToPath(new URL('../../../../library', import.meta.
 /** The real store, projections, services and app over a database in `dir`; agents are scripted. */
 export function createTestServer(dir: string, runtime: AgentRuntime = new ScriptedRuntime(), options: { autoTriage?: boolean; now?: () => Date } = {}) {
   const db = openDatabase(join(dir, 'test.db'));
-  const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection()]);
+  const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection()]);
   const projectsQueries = new ProjectsQueries(db);
   const projects = new ProjectService(store, projectsQueries);
   const work = new WorkService(store, new WorkQueries(db), projectsQueries);
@@ -71,6 +72,6 @@ export function createTestServer(dir: string, runtime: AgentRuntime = new Script
     env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
   });
   const scheduler = new Scheduler({ mergeBlocks: () => merges.blocks(), store, queries: new SchedulerQueries(db), work, runs, runsQueries, projects: projectsQueries, logDir: join(dir, 'logs'), ...(options.now ? { now: options.now } : {}) });
-  const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, version: '0.0.0-test', port: PORT, webDist: null, keepAliveMs: 50 });
+  const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), version: '0.0.0-test', port: PORT, webDist: null, keepAliveMs: 50 });
   return { db, store, projects, work, runs, library, decisions, triage, scheduler, merges, app };
 }

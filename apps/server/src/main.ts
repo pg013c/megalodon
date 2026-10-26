@@ -16,6 +16,7 @@ import { RunsProjection, RunsQueries } from './runs/projection';
 import { agentEnv, RunService } from './runs/service';
 import { ClaudeRuntime } from './runtime/claude';
 import { MergeProjection, MergeQueries } from './merge/projection';
+import { UsageProjection, UsageQueries } from './overview/usage';
 import { MergeService } from './merge/service';
 import { SchedulerProjection, SchedulerQueries } from './scheduler/projection';
 import { Scheduler } from './scheduler/service';
@@ -42,7 +43,7 @@ try {
 }
 
 const db = openDatabase(join(config.dataDir, 'megalodon.db'));
-const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection()]);
+const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection()]);
 const projectsQueries = new ProjectsQueries(db);
 const projects = new ProjectService(store, projectsQueries);
 const work = new WorkService(store, new WorkQueries(db), projectsQueries);
@@ -93,7 +94,7 @@ triage.recover();
 await merges.recover();
 merges.start();
 scheduler.start();
-const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, version: pkg.version, port: config.port, webDist: config.webDist });
+const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), version: pkg.version, port: config.port, webDist: config.webDist });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(`Megalodon ${pkg.version} on http://${config.host}:${info.port} (data: ${config.dataDir})`);

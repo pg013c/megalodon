@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
-import type { ApiError, Health, StoredEvent } from '@megalodon/contracts';
+import { periodSchema, type ApiError, type Health, type Overview, type StoredEvent } from '@megalodon/contracts';
 import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { AppError, type ErrorStatus } from '../errors';
@@ -12,6 +12,8 @@ import type { Library } from '../library/library';
 import type { RunService } from '../runs/service';
 import type { MergeService } from '../merge/service';
 import { NeedsYouService } from '../needsYou/service';
+import { OverviewService } from '../overview/service';
+import type { UsageQueries } from '../overview/usage';
 import type { Scheduler } from '../scheduler/service';
 import type { TriageService } from '../triage/service';
 import type { WorkService } from '../work/service';
@@ -31,6 +33,7 @@ export interface AppDeps {
   triage: TriageService;
   scheduler: Scheduler;
   merges: MergeService;
+  usage: UsageQueries;
   version: string;
   port: number;
   /** Built web app to serve, or null in dev where Vite serves it. */
@@ -39,7 +42,7 @@ export interface AppDeps {
   keepAliveMs?: number;
 }
 
-export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
+export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
   const app = new Hono();
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 
@@ -61,6 +64,12 @@ export function createApp({ store, projects, work, runs, library, decisions, tri
     projects: projects.queries,
     merges,
     scheduler,
+  });
+  const overview = new OverviewService({ projects: projects.queries, work: work.queries, runs: runs.queries, usage, needsYou, merges });
+  app.get('/api/overview', (c) => {
+    const period = periodSchema.safeParse(c.req.query('period') ?? '7d');
+    if (!period.success) throw new AppError(400, 'INVALID_REQUEST', 'period must be one of 24h, 7d, 30d, all');
+    return c.json<Overview>(overview.view(period.data));
   });
   projectRoutes(app, projects);
   workRoutes(app, work);

@@ -282,14 +282,16 @@ export class MergeService {
       ].join('\n');
       let summary: string | null = null;
       let usage = zeroUsage;
+      let durationMs = 0;
       for await (const event of this.deps.runtime.run({ agent, cwd: run.worktreePath, prompt, env: this.deps.env, signal: new AbortController().signal })) {
         if (event.type === 'result') {
           summary = event.ok ? event.result : null;
           usage = event.usage;
+          durationMs = Math.round(event.durationMs);
         }
       }
       remaining = hasConflictMarkers(run.worktreePath, await unmergedFiles(run.worktreePath).then((u) => [...new Set([...u, ...remaining])]));
-      this.event(task, mergeEvents.resolved, { runId: run.id, attempt, remaining, summary, usage, agentVersion: agent.version });
+      this.event(task, mergeEvents.resolved, { runId: run.id, attempt, remaining, summary, usage, durationMs, agentVersion: agent.version });
       if (!remaining.length) {
         await concludeMerge(run.worktreePath);
         return { ok: true, sha: '' };

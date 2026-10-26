@@ -2,6 +2,7 @@ import { storedEventSchema, type StoredEvent } from '@megalodon/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { needsYouKeys } from './needsYou';
+import { overviewKeys } from './overview';
 import { keys } from './projects';
 import { queueKeys } from './queue';
 import { runKeys } from './runs';
@@ -9,16 +10,16 @@ import { workKeys } from './work';
 
 /** Query keys that an event type makes stale. Transcript messages update views directly instead. */
 export function staleKeys(type: string): readonly (readonly string[])[] {
-  if (type.startsWith('project.') || type.startsWith('workspace.')) return [keys.projects, keys.workspace];
+  if (type.startsWith('project.') || type.startsWith('workspace.')) return [keys.projects, keys.workspace, overviewKeys.all];
   if (type.startsWith('task.') || type.startsWith('story.') || type.startsWith('triage.') || type.startsWith('dependency.')) {
-    return [workKeys.all, workKeys.tasks, queueKeys.queue, needsYouKeys.all];
+    return [workKeys.all, workKeys.tasks, queueKeys.queue, needsYouKeys.all, overviewKeys.all];
   }
-  if (type.startsWith('scheduler.')) return [queueKeys.queue, needsYouKeys.all];
-  if (type.startsWith('merge.')) return [workKeys.all, workKeys.tasks, queueKeys.queue, needsYouKeys.all];
+  if (type.startsWith('scheduler.')) return [queueKeys.queue, needsYouKeys.all, overviewKeys.all];
+  if (type.startsWith('merge.')) return [workKeys.all, workKeys.tasks, queueKeys.queue, needsYouKeys.all, overviewKeys.all];
   if (type === 'step.message') return [];
-  if (type.startsWith('run.')) return [runKeys.all, queueKeys.queue, needsYouKeys.all];
-  if (type.startsWith('decision.')) return [runKeys.all, needsYouKeys.all];
-  if (type.startsWith('step.')) return [runKeys.all];
+  if (type.startsWith('run.')) return [runKeys.all, queueKeys.queue, needsYouKeys.all, overviewKeys.all];
+  if (type.startsWith('decision.')) return [runKeys.all, needsYouKeys.all, overviewKeys.all];
+  if (type.startsWith('step.')) return [runKeys.all, overviewKeys.all];
   return [];
 }
 

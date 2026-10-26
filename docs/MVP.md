@@ -60,7 +60,7 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 - [x] Needs you screen across projects: gates, failed runs, manual tasks.
 
 ## Step 8 — Overview
-- [ ] Global Overview: Needs you on top, one card per project (running tasks with their step,
+- [x] Global Overview: Needs you on top, one card per project (running tasks with their step,
       ready / blocked / done counts, cost and agent time).
 
 ## Step 9 — API, MCP and chat

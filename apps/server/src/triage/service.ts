@@ -101,17 +101,18 @@ export class TriageService {
 
   private async triage(task: Task): Promise<void> {
     this.deps.store.append([{ type: workEvents.triageStarted, stream: taskStream(task.id), data: { taskId: task.id }, actor: SYSTEM }]);
+    const spent = { costUsd: 0, durationMs: 0 };
     try {
-      const output = await this.ask(task);
-      this.apply(this.deps.work.queries.task(task.id)!, output);
+      const output = await this.ask(task, spent);
+      this.apply(this.deps.work.queries.task(task.id)!, output, spent);
     } catch (error) {
       this.deps.store.append([
-        { type: workEvents.triageFailed, stream: taskStream(task.id), data: { taskId: task.id, error: (error as Error).message }, actor: SYSTEM },
+        { type: workEvents.triageFailed, stream: taskStream(task.id), data: { taskId: task.id, error: (error as Error).message, ...spent }, actor: SYSTEM },
       ]);
     }
   }
 
-  private async ask(task: Task): Promise<TriageOutput> {
+  private async ask(task: Task, spent: { costUsd: number; durationMs: number }): Promise<TriageOutput> {
     const project = this.deps.projects.get(task.projectId);
     if (!project) throw new Error('The project is gone');
     const agent = this.deps.library.agent('triage');
@@ -122,6 +123,8 @@ export class TriageService {
       const prompt = triagePrompt(task, project, this.deps.work.queries.tasks(project.id), this.deps.work.queries.stories(project.id), this.deps.library.pipelines());
       for await (const event of this.deps.runtime.run({ agent, cwd, prompt, env: this.deps.env, signal: new AbortController().signal })) {
         if (event.type !== 'result') continue;
+        spent.costUsd = event.usage.costUsd;
+        spent.durationMs = Math.round(event.durationMs);
         if (!event.ok) throw new Error(event.error ?? 'The triage agent failed');
         const parsed = outputContracts.triage.safeParse(event.output);
         if (!parsed.success) throw new Error(`The triage agent answered without a valid triage (${parsed.error.issues[0]?.message ?? 'invalid'})`);
@@ -134,7 +137,7 @@ export class TriageService {
   }
 
   /** Records the triage and its effects in one append, then queues the task. */
-  private apply(task: Task, output: TriageOutput): void {
+  private apply(task: Task, output: TriageOutput, spent: { costUsd: number; durationMs: number }): void {
     const agent = this.deps.library.agent('triage');
     const actor: Actor = { kind: 'agent', agentId: agent.id, version: agent.version };
     const pipelines = this.deps.library.pipelines().map((p) => p.id);
@@ -188,7 +191,7 @@ export class TriageService {
         notes.push(`Dependency on #${dependency.number} ignored: ${(error as Error).message}`);
       }
     }
-    events.push({ type: workEvents.triageCompleted, stream: taskStream(task.id), data: { taskId: task.id, summary: output.summary }, actor });
+    events.push({ type: workEvents.triageCompleted, stream: taskStream(task.id), data: { taskId: task.id, summary: output.summary, ...spent }, actor });
     const queue = queueDecision(this.deps.projects.get(task.projectId)?.settings.policies.queue.mode ?? 'auto', output.manualTasks.length);
     events.push(
       this.deps.decisions.event({

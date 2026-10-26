@@ -229,4 +229,19 @@ export const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: 8,
+    name: 'agent usage',
+    sql: `
+      CREATE TABLE agent_usage (
+        seq INTEGER PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        cost_usd REAL NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        at TEXT NOT NULL
+      );
+      CREATE INDEX agent_usage_by_project ON agent_usage (project_id, at);
+    `,
+  },
 ];

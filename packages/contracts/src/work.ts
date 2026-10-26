@@ -255,7 +255,14 @@ export const taskStream = (id: string) => `task:${id}`;
 export const taskTouchesSetSchema = z.object({ id: z.string(), touches: z.array(z.string()) });
 export const taskPipelineSetSchema = z.object({ id: z.string(), pipelineId: z.string() });
 export const taskMovedToFrontSchema = z.object({ id: z.string() });
-export const triageEventSchema = z.object({ taskId: z.string(), summary: z.string().optional(), error: z.string().optional() });
+export const triageEventSchema = z.object({
+  taskId: z.string(),
+  summary: z.string().optional(),
+  error: z.string().optional(),
+  /** What the triage agent spent (completed and failed events). */
+  costUsd: z.number().optional(),
+  durationMs: z.number().int().optional(),
+});
 export const dependencyAddedSchema = dependencySchema.omit({ createdAt: true, met: true });
 export const dependencyRemovedSchema = z.object({ id: z.string() });
 export const dependencyMetSchema = z.object({ id: z.string() });
