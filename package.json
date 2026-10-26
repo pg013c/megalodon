@@ -9,9 +9,11 @@
   "scripts": {
     "dev": "MEGALODON_PORT=4610 MEGALODON_WEB_PORT=5610 MEGALODON_DATA_DIR=~/.megalodon-dev pnpm -r --parallel dev",
     "build": "pnpm --filter @megalodon/web build",
-    "start": "pnpm build && MEGALODON_SERVE_WEB=1 pnpm --filter @megalodon/server start",
+    "start": "pnpm build && MEGALODON_SERVE_WEB=1 MEGALODON_PORT=4610 MEGALODON_DATA_DIR=~/.megalodon-dev pnpm --filter @megalodon/server start",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "release": "node scripts/release.mjs",
+    "stable": "node scripts/stable.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

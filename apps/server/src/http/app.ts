@@ -11,6 +11,9 @@ import type { DecisionService } from '../decisions/service';
 import type { Library } from '../library/library';
 import type { RunService } from '../runs/service';
 import type { MergeService } from '../merge/service';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import type { ChatService } from '../chat/service';
+import { createMcpServer } from '../mcp/tools';
 import { NeedsYouService } from '../needsYou/service';
 import { OverviewService } from '../overview/service';
 import type { UsageQueries } from '../overview/usage';
@@ -18,6 +21,7 @@ import type { Scheduler } from '../scheduler/service';
 import type { TriageService } from '../triage/service';
 import type { WorkService } from '../work/service';
 import { decisionRoutes } from './decisions';
+import { chatRoutes } from './chat';
 import { projectRoutes } from './projects';
 import { queueRoutes } from './queue';
 import { runRoutes } from './runs';
@@ -34,6 +38,7 @@ export interface AppDeps {
   scheduler: Scheduler;
   merges: MergeService;
   usage: UsageQueries;
+  chat: ChatService;
   version: string;
   port: number;
   /** Built web app to serve, or null in dev where Vite serves it. */
@@ -42,7 +47,7 @@ export interface AppDeps {
   keepAliveMs?: number;
 }
 
-export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
+export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage, chat, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
   const app = new Hono();
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 
@@ -71,6 +76,15 @@ export function createApp({ store, projects, work, runs, library, decisions, tri
     if (!period.success) throw new AppError(400, 'INVALID_REQUEST', 'period must be one of 24h, 7d, 30d, all');
     return c.json<Overview>(overview.view(period.data));
   });
+  // MCP over streamable HTTP, stateless: a fresh server per request (ADR-0030)
+  app.all('/mcp', async (c) => {
+    const server = createMcpServer({ version, projects, work, runs, decisions, triage, scheduler, merges, needsYou, overview, library });
+    const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+    await server.connect(transport);
+    return transport.handleRequest(c.req.raw);
+  });
+
+  chatRoutes(app, chat);
   projectRoutes(app, projects);
   workRoutes(app, work);
   runRoutes(app, runs, library);

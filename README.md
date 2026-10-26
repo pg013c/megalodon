@@ -14,11 +14,17 @@ Requires Node 22.13+ and pnpm 11.
 
 ```bash
 pnpm install
-pnpm dev        # dev instance: server on 4610, UI on http://127.0.0.1:5610, data in ~/.megalodon-dev
-pnpm start      # stable instance: http://127.0.0.1:4600, data in ~/.megalodon
+pnpm dev                 # dev instance from this checkout: server 4610, UI http://127.0.0.1:5610, data ~/.megalodon-dev
+pnpm start               # this checkout built, served on 4610 with the dev data
+git tag v0.1.0 && pnpm release v0.1.0   # build a release into ~/.megalodon/releases/v0.1.0
+pnpm stable              # the stable instance: current release, http://127.0.0.1:4600, data ~/.megalodon
 pnpm typecheck
 pnpm test
 ```
+
+Merges Megalodon makes into its own `main` never touch the stable instance; upgrade it with a
+new tag and `pnpm release` (ADR-0013). Other clients can use Megalodon over MCP at
+`http://127.0.0.1:4600/mcp` (ADR-0030).
 
 Environment: `MEGALODON_PORT`, `MEGALODON_WEB_PORT` (dev UI), `MEGALODON_DATA_DIR`,
 `MEGALODON_SERVE_WEB=1` (serve the built UI from the server).

@@ -1,7 +1,9 @@
 import { NavLink, Outlet } from 'react-router';
 import { useLiveUpdates } from '../data/live';
 import { useNeedsYou } from '../data/needsYou';
+import { ChatPanel } from './ChatPanel';
 import { CommandPalette } from './CommandPalette';
+import { useUiState } from './UiState';
 import { ConnectProjectDialog } from './ConnectProjectDialog';
 import { NewItemDialog } from './NewItemDialog';
 import { ProjectSwitcher } from './ProjectSwitcher';
@@ -11,6 +13,7 @@ export function Layout() {
   useLiveUpdates();
   const needs = useNeedsYou();
   const waiting = (needs.data?.items.length ?? 0) + (needs.data?.mergeBlocked.length ?? 0);
+  const { chatOpen, setChatOpen } = useUiState();
   return (
     <div className="flex h-full flex-col">
       <header className="sticky top-0 z-10 border-b border-line bg-surface/80 backdrop-blur-xl">
@@ -38,13 +41,22 @@ export function Layout() {
                 </NavLink>
               ))}
           </nav>
-          <kbd className="ml-auto hidden text-xs text-muted sm:block">⌘K</kbd>
+          <button
+            type="button"
+            onClick={() => setChatOpen((o) => !o)}
+            className={`ml-auto rounded-full px-3 py-1 text-[13px] ${chatOpen ? 'bg-ink text-surface' : 'text-muted hover:text-ink'}`}
+            title="Assistant (⌘J)"
+          >
+            Assistant
+          </button>
+          <kbd className="hidden text-xs text-muted sm:block">⌘K</kbd>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
+      <main className={`mx-auto w-full max-w-6xl flex-1 px-4 py-10 ${chatOpen ? 'lg:pr-[456px]' : ''}`}>
         <Outlet />
       </main>
       <CommandPalette />
+      <ChatPanel />
       <ConnectProjectDialog />
       <NewItemDialog />
     </div>

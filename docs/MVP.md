@@ -64,8 +64,8 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
       ready / blocked / done counts, cost and agent time).
 
 ## Step 9 — API, MCP and chat
-- [ ] All commands and queries exposed over MCP.
-- [ ] In-app chat agent using that MCP, aware of the active project and open item.
+- [x] All commands and queries exposed over MCP.
+- [x] In-app chat agent using that MCP, aware of the active project and open item.
 - [ ] Stable instance from a tagged build (ADR-0013); Megalodon connected to itself as a project.
 - [ ] **Self-hosting check:** three tasks added through chat are merged to Megalodon's `main`.
 

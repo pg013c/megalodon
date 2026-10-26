@@ -22,4 +22,6 @@ Local multi-project agent orchestrator, written from scratch (ADR-0001).
 - Verify changes with `pnpm typecheck` and `pnpm test`.
 - The stable instance (port 4600, data `~/.megalodon`) may be orchestrating you. Never start a
   server on that port or data directory, and never stop the process that holds it.
-- To run the app, use a throwaway data directory and free ports.
+- To run the app, use a throwaway data directory and free ports, e.g.
+  `MEGALODON_DATA_DIR=$(mktemp -d) MEGALODON_PORT=4697 MEGALODON_SERVE_WEB=1 pnpm --filter @megalodon/server start`.
+- Never run `pnpm stable` or `pnpm release`, and never create tags: those belong to the operator.

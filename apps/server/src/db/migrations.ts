@@ -244,4 +244,25 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX agent_usage_by_project ON agent_usage (project_id, at);
     `,
   },
+  {
+    id: 9,
+    name: 'chat',
+    sql: `
+      CREATE TABLE chat_conversations (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        busy INTEGER NOT NULL DEFAULT 0,
+        created_seq INTEGER NOT NULL
+      );
+      CREATE TABLE chat_messages (
+        seq INTEGER PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        text TEXT NOT NULL,
+        tool TEXT,
+        at TEXT NOT NULL
+      );
+      CREATE INDEX chat_messages_by_conversation ON chat_messages (conversation_id, seq);
+    `,
+  },
 ];

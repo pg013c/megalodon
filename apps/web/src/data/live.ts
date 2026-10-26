@@ -1,6 +1,7 @@
 import { storedEventSchema, type StoredEvent } from '@megalodon/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { chatKeys } from './chat';
 import { needsYouKeys } from './needsYou';
 import { overviewKeys } from './overview';
 import { keys } from './projects';
@@ -16,6 +17,7 @@ export function staleKeys(type: string): readonly (readonly string[])[] {
   }
   if (type.startsWith('scheduler.')) return [queueKeys.queue, needsYouKeys.all, overviewKeys.all];
   if (type.startsWith('merge.')) return [workKeys.all, workKeys.tasks, queueKeys.queue, needsYouKeys.all, overviewKeys.all];
+  if (type.startsWith('chat.')) return [chatKeys.all];
   if (type === 'step.message') return [];
   if (type.startsWith('run.')) return [runKeys.all, queueKeys.queue, needsYouKeys.all, overviewKeys.all];
   if (type.startsWith('decision.')) return [runKeys.all, needsYouKeys.all, overviewKeys.all];

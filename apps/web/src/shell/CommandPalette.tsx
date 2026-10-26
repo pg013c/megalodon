@@ -16,7 +16,7 @@ export function CommandPalette() {
   const projects = useProjects();
   const active = useActiveProject();
   const setActive = useSetActiveProject();
-  const { setConnectOpen, setNewItemOpen } = useUiState();
+  const { setConnectOpen, setNewItemOpen, setChatOpen } = useUiState();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -24,6 +24,11 @@ export function CommandPalette() {
       if (event.key === 'k') {
         event.preventDefault();
         setOpen((value) => !value);
+        return;
+      }
+      if (event.key === 'j') {
+        event.preventDefault();
+        setChatOpen((value) => !value);
         return;
       }
       const screen = screens.find((s) => s.key === event.key);
@@ -34,7 +39,7 @@ export function CommandPalette() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [navigate]);
+  }, [navigate, setChatOpen]);
 
   const go = (path: string) => {
     setOpen(false);

@@ -17,6 +17,8 @@ import { agentEnv, RunService } from './runs/service';
 import { ClaudeRuntime } from './runtime/claude';
 import { MergeProjection, MergeQueries } from './merge/projection';
 import { UsageProjection, UsageQueries } from './overview/usage';
+import { ChatProjection, ChatQueries } from './chat/projection';
+import { ChatService } from './chat/service';
 import { MergeService } from './merge/service';
 import { SchedulerProjection, SchedulerQueries } from './scheduler/projection';
 import { Scheduler } from './scheduler/service';
@@ -43,7 +45,7 @@ try {
 }
 
 const db = openDatabase(join(config.dataDir, 'megalodon.db'));
-const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection()]);
+const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection(), new ChatProjection()]);
 const projectsQueries = new ProjectsQueries(db);
 const projects = new ProjectService(store, projectsQueries);
 const work = new WorkService(store, new WorkQueries(db), projectsQueries);
@@ -89,12 +91,25 @@ const scheduler = new Scheduler({
   projects: projectsQueries,
   logDir: join(config.dataDir, 'logs'),
 });
+const chat = new ChatService({
+  store,
+  queries: new ChatQueries(db),
+  projects: projectsQueries,
+  work: work.queries,
+  runs: runsQueries,
+  library,
+  runtime,
+  mcpUrl: `http://127.0.0.1:${config.port}/mcp`,
+  dataDir: config.dataDir,
+  env,
+});
 runs.recover();
 triage.recover();
+chat.recover();
 await merges.recover();
 merges.start();
 scheduler.start();
-const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), version: pkg.version, port: config.port, webDist: config.webDist });
+const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), chat, version: pkg.version, port: config.port, webDist: config.webDist });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(`Megalodon ${pkg.version} on http://${config.host}:${info.port} (data: ${config.dataDir})`);

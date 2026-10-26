@@ -5,6 +5,8 @@ interface UiState {
   setConnectOpen: (open: boolean) => void;
   newItemOpen: boolean;
   setNewItemOpen: (open: boolean) => void;
+  chatOpen: boolean;
+  setChatOpen: (open: boolean | ((open: boolean) => boolean)) => void;
 }
 
 const Context = createContext<UiState | null>(null);
@@ -13,7 +15,11 @@ const Context = createContext<UiState | null>(null);
 export function UiStateProvider({ children }: { children: ReactNode }) {
   const [connectOpen, setConnectOpen] = useState(false);
   const [newItemOpen, setNewItemOpen] = useState(false);
-  const value = useMemo(() => ({ connectOpen, setConnectOpen, newItemOpen, setNewItemOpen }), [connectOpen, newItemOpen]);
+  const [chatOpen, setChatOpen] = useState(false);
+  const value = useMemo(
+    () => ({ connectOpen, setConnectOpen, newItemOpen, setNewItemOpen, chatOpen, setChatOpen }),
+    [connectOpen, newItemOpen, chatOpen],
+  );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

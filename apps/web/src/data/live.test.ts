@@ -14,6 +14,7 @@ describe('staleKeys', () => {
     expect(staleKeys('step.completed')).toEqual([['runs'], ['overview']]);
     expect(staleKeys('step.message')).toEqual([]);
     expect(staleKeys('decision.made')).toEqual([['runs'], ['needs-you'], ['overview']]);
+    expect(staleKeys('chat.message')).toEqual([['chat']]);
     expect(staleKeys('other.thing')).toEqual([]);
   });
 });
