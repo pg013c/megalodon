@@ -1,7 +1,9 @@
 import { Command } from 'cmdk';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useHealth } from '../data/health';
 import { useActiveProject, useProjects, useSetActiveProject } from '../data/projects';
+import { versionLabel } from '../lib/format';
 import { screens } from './screens';
 import { useUiState } from './UiState';
 
@@ -16,6 +18,7 @@ export function CommandPalette() {
   const projects = useProjects();
   const active = useActiveProject();
   const setActive = useSetActiveProject();
+  const health = useHealth(open);
   const { setConnectOpen, setNewItemOpen, setChatOpen } = useUiState();
 
   useEffect(() => {
@@ -115,6 +118,7 @@ export function CommandPalette() {
           </Command.Item>
         </Command.Group>
       </Command.List>
+      {health.data && <div className="border-t border-line px-4 py-2 text-xs text-muted">{versionLabel(health.data)}</div>}
     </Command.Dialog>
   );
 }

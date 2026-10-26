@@ -7,6 +7,7 @@ import { openDatabase } from './db';
 import { EventStore } from './events/store';
 import { createApp } from './http/app';
 import { acquireLock, DataDirLockedError } from './lock';
+import { releaseTag } from './release';
 import { ProjectsProjection, ProjectsQueries } from './projects/projection';
 import { ProjectService } from './projects/service';
 import { DecisionsProjection, DecisionsQueries } from './decisions/projection';
@@ -31,6 +32,7 @@ const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const builtinLibrary = fileURLToPath(new URL('../../../library', import.meta.url));
 
 const config = loadConfig(process.env, webDist);
+const release = releaseTag(fileURLToPath(import.meta.url), join(config.dataDir, 'releases'));
 mkdirSync(config.dataDir, { recursive: true });
 
 let releaseLock: () => void;
@@ -109,10 +111,10 @@ chat.recover();
 await merges.recover();
 merges.start();
 scheduler.start();
-const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), chat, version: pkg.version, port: config.port, webDist: config.webDist });
+const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), chat, version: pkg.version, release, port: config.port, webDist: config.webDist });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
-  console.log(`Megalodon ${pkg.version} on http://${config.host}:${info.port} (data: ${config.dataDir})`);
+  console.log(`Megalodon ${pkg.version}${release ? ` (${release})` : ''} on http://${config.host}:${info.port} (data: ${config.dataDir})`);
 });
 
 let stopping = false;
