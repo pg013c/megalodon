@@ -26,4 +26,21 @@ export const migrations: readonly Migration[] = [
         BEGIN SELECT RAISE(ABORT, 'events are immutable'); END;
     `,
   },
+  {
+    id: 2,
+    name: 'projects and workspace',
+    sql: `
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL UNIQUE,
+        settings TEXT NOT NULL,
+        connected_at TEXT NOT NULL
+      );
+      CREATE TABLE workspace (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        active_project_id TEXT
+      );
+    `,
+  },
 ];

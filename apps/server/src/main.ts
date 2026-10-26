@@ -7,6 +7,8 @@ import { openDatabase } from './db';
 import { EventStore } from './events/store';
 import { createApp } from './http/app';
 import { acquireLock, DataDirLockedError } from './lock';
+import { ProjectsProjection, ProjectsQueries } from './projects/projection';
+import { ProjectService } from './projects/service';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -26,8 +28,9 @@ try {
 }
 
 const db = openDatabase(join(config.dataDir, 'megalodon.db'));
-const store = new EventStore(db, []);
-const app = createApp({ store, version: pkg.version, port: config.port, webDist: config.webDist });
+const store = new EventStore(db, [new ProjectsProjection()]);
+const projects = new ProjectService(store, new ProjectsQueries(db));
+const app = createApp({ store, projects, version: pkg.version, port: config.port, webDist: config.webDist });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(`Megalodon ${pkg.version} on http://${config.host}:${info.port} (data: ${config.dataDir})`);

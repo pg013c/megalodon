@@ -15,11 +15,11 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 - [x] Web shell with the five main screens as empty routes and `Cmd+K`.
 
 ## Step 1 — Projects and context
-- [ ] Connect a local git repository as a project; reject non-repositories.
-- [ ] Project settings detected on connect (package manager, worktree setup, checks) and editable
+- [x] Connect a local git repository as a project; reject non-repositories.
+- [x] Project settings detected on connect (package manager, worktree setup, checks) and editable
       (ADR-0015), including the knowledge base path (ADR-0016).
-- [ ] Active project switch; persisted.
-- [ ] Branch list (local and fetched) with diff against `main`.
+- [x] Active project switch; persisted.
+- [x] Branch list (local and fetched) with diff against `main`.
 
 ## Step 2 — Stories, tasks and statuses
 - [ ] Create stories, tasks (with or without a story) and manual tasks.

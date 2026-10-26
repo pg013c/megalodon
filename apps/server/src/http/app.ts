@@ -4,10 +4,14 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import type { ApiError, Health, StoredEvent } from '@megalodon/contracts';
 import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import { AppError, type ErrorStatus } from '../errors';
 import type { EventStore } from '../events/store';
+import type { ProjectService } from '../projects/service';
+import { projectRoutes } from './projects';
 
 export interface AppDeps {
   store: EventStore;
+  projects: ProjectService;
   version: string;
   port: number;
   /** Built web app to serve, or null in dev where Vite serves it. */
@@ -16,7 +20,7 @@ export interface AppDeps {
   keepAliveMs?: number;
 }
 
-export function createApp({ store, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
+export function createApp({ store, projects, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
   const app = new Hono();
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 
@@ -31,7 +35,10 @@ export function createApp({ store, version, port, webDist, keepAliveMs = 15_000 
     c.json<Health>({ ok: true, name: 'megalodon', version, lastSeq: store.lastSeq() }),
   );
 
-  // Live event feed. A reconnecting client sends Last-Event-ID and first receives what it missed.
+  projectRoutes(app, projects);
+
+  // Live event feed from now on. A client that sends Last-Event-ID (a reconnecting EventSource) or
+  // ?after=<seq> first receives what it missed.
   app.get('/api/stream', (c) =>
     streamSSE(c, async (stream) => {
       let chain = Promise.resolve();
@@ -40,9 +47,9 @@ export function createApp({ store, version, port, webDist, keepAliveMs = 15_000 
           stream.writeSSE({ event: 'event', id: String(event.seq), data: JSON.stringify(event) }),
         );
       };
-      const lastId = Number(c.req.header('last-event-id') ?? 0);
+      const after = Number(c.req.header('last-event-id') ?? c.req.query('after') ?? store.lastSeq());
       // read and subscribe in the same tick: append is synchronous, so nothing slips between them
-      for (const event of store.read(Number.isFinite(lastId) ? lastId : 0, Number.MAX_SAFE_INTEGER)) send(event);
+      if (Number.isInteger(after) && after >= 0) for (const event of store.read(after, Number.MAX_SAFE_INTEGER)) send(event);
       const unsubscribe = store.subscribe(send);
       stream.onAbort(unsubscribe);
       while (!stream.aborted) {
@@ -63,6 +70,7 @@ export function createApp({ store, version, port, webDist, keepAliveMs = 15_000 
   }
 
   app.onError((err, c) => {
+    if (err instanceof AppError) return error(c, err.status, err.code, err.message);
     console.error(err);
     return error(c, 500, 'INTERNAL', err.message);
   });
@@ -70,6 +78,6 @@ export function createApp({ store, version, port, webDist, keepAliveMs = 15_000 
   return app;
 }
 
-function error(c: Context, status: 403 | 404 | 500, code: string, message: string) {
+function error(c: Context, status: ErrorStatus, code: string, message: string) {
   return c.json<ApiError>({ error: { code, message } }, status);
 }

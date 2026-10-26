@@ -1,20 +1,11 @@
-import { join } from 'node:path';
 import { apiErrorSchema, healthSchema } from '@megalodon/contracts';
 import { describe, expect, it } from 'vitest';
-import { openDatabase } from '../db';
-import { EventStore } from '../events/store';
+import { createTestServer, url } from '../test/server';
 import { useTempDir } from '../test/tempDir';
-import { createApp } from './app';
 
 const tempDir = useTempDir();
 
-function setup() {
-  const store = new EventStore(openDatabase(join(tempDir(), 'test.db')), []);
-  const app = createApp({ store, version: '0.0.0-test', port: 4600, webDist: null, keepAliveMs: 50 });
-  return { app, store };
-}
-
-const url = (path: string) => `http://127.0.0.1:4600${path}`;
+const setup = () => createTestServer(tempDir());
 
 describe('HTTP app', () => {
   it('reports health with the last event sequence', async () => {
@@ -78,5 +69,25 @@ describe('HTTP app', () => {
     expect(text).not.toContain('"type":"first"');
     expect(text).toContain('id: 2');
     expect(text).toContain('id: 3');
+  });
+
+  it('streams only new events when the client gives no position', async () => {
+    const { app, store } = setup();
+    const append = (type: string) => store.append([{ type, stream: 's', data: null, actor: { kind: 'system' } }]);
+    append('old');
+
+    const controller = new AbortController();
+    const res = await app.request(url('/api/stream'), { signal: controller.signal });
+    const reader = res.body!.getReader();
+    append('new');
+    let text = '';
+    while (!text.includes('"type":"new"')) {
+      const { value } = await reader.read();
+      text += new TextDecoder().decode(value);
+    }
+    controller.abort();
+    await reader.cancel().catch(() => {});
+
+    expect(text).not.toContain('"type":"old"');
   });
 });

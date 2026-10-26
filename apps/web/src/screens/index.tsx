@@ -1,14 +1,6 @@
 import { useParams } from 'react-router';
 import { Placeholder } from './Placeholder';
 
-export const Overview = () => (
-  <Placeholder title="Overview" purpose="Every project at a glance, with what needs you on top." />
-);
-
-export const Project = () => (
-  <Placeholder title="Project" purpose="The active project's board, dependencies and progress." />
-);
-
 export const NeedsYou = () => (
   <Placeholder title="Needs you" purpose="Decisions, gates and manual tasks waiting for you, across projects." />
 );

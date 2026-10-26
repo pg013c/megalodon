@@ -1,13 +1,18 @@
 import { NavLink, Outlet } from 'react-router';
+import { useLiveUpdates } from '../data/live';
 import { CommandPalette } from './CommandPalette';
+import { ConnectProjectDialog } from './ConnectProjectDialog';
+import { ProjectSwitcher } from './ProjectSwitcher';
 import { screens } from './screens';
 
 export function Layout() {
+  useLiveUpdates();
   return (
     <div className="flex h-full flex-col">
       <header className="sticky top-0 z-10 border-b border-line bg-surface/80 backdrop-blur-xl">
         <div className="mx-auto flex h-12 max-w-6xl items-center gap-6 px-4">
           <span className="text-[15px] font-semibold tracking-tight">Megalodon</span>
+          <ProjectSwitcher />
           <nav className="flex gap-1 overflow-x-auto">
             {screens
               .filter((screen) => screen.inNav)
@@ -33,6 +38,7 @@ export function Layout() {
         <Outlet />
       </main>
       <CommandPalette />
+      <ConnectProjectDialog />
     </div>
   );
 }
