@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router';
 import { useLiveUpdates } from '../data/live';
 import { CommandPalette } from './CommandPalette';
 import { ConnectProjectDialog } from './ConnectProjectDialog';
+import { NewItemDialog } from './NewItemDialog';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { screens } from './screens';
 
@@ -39,6 +40,7 @@ export function Layout() {
       </main>
       <CommandPalette />
       <ConnectProjectDialog />
+      <NewItemDialog />
     </div>
   );
 }

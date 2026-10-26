@@ -62,6 +62,12 @@ export class EventStore {
     return rows.map(toEvent);
   }
 
+  /** Every event of one stream, in log order. */
+  readStream(stream: string): StoredEvent[] {
+    const rows = this.db.prepare('SELECT * FROM events WHERE stream = ? ORDER BY seq').all(stream) as unknown as EventRow[];
+    return rows.map(toEvent);
+  }
+
   lastSeq(): number {
     const row = this.db.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM events').get() as { seq: number };
     return row.seq;

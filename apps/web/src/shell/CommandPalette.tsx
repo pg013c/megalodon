@@ -16,7 +16,7 @@ export function CommandPalette() {
   const projects = useProjects();
   const active = useActiveProject();
   const setActive = useSetActiveProject();
-  const { setConnectOpen } = useUiState();
+  const { setConnectOpen, setNewItemOpen } = useUiState();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -55,6 +55,20 @@ export function CommandPalette() {
       />
       <Command.List className="max-h-80 overflow-y-auto p-2">
         <Command.Empty className="px-3 py-6 text-center text-sm text-muted">No results</Command.Empty>
+        {active && (
+          <Command.Group heading={active.name} className={group}>
+            <Command.Item
+              value="New task story manual"
+              onSelect={() => {
+                setOpen(false);
+                setNewItemOpen(true);
+              }}
+              className={itemClass}
+            >
+              New task, manual task or story…
+            </Command.Item>
+          </Command.Group>
+        )}
         <Command.Group heading="Go to" className={group}>
           {screens.map((screen) => (
             <Command.Item

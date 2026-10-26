@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { staleKeys } from './live';
 
 describe('staleKeys', () => {
-  it('refreshes projects and workspace on project and workspace events', () => {
+  it('maps event types to the queries they make stale', () => {
     expect(staleKeys('project.connected')).toEqual([['projects'], ['workspace']]);
     expect(staleKeys('workspace.active_project_set')).toEqual([['projects'], ['workspace']]);
-    expect(staleKeys('task.created')).toEqual([]);
+    expect(staleKeys('task.status_changed')).toEqual([['work'], ['task']]);
+    expect(staleKeys('story.created')).toEqual([['work'], ['task']]);
+    expect(staleKeys('run.started')).toEqual([]);
   });
 });

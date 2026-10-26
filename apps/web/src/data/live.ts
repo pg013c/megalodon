@@ -2,10 +2,12 @@ import { storedEventSchema } from '@megalodon/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { keys } from './projects';
+import { workKeys } from './work';
 
 /** Query keys that an event type makes stale. */
 export function staleKeys(type: string): readonly (readonly string[])[] {
   if (type.startsWith('project.') || type.startsWith('workspace.')) return [keys.projects, keys.workspace];
+  if (type.startsWith('task.') || type.startsWith('story.')) return [workKeys.all, workKeys.tasks];
   return [];
 }
 

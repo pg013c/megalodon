@@ -41,7 +41,9 @@ Project
 ## 3. Statuses
 
 Statuses are projections of the event log. There is one status per item, and the board's columns
-are these statuses — never a separate field.
+are these statuses — never a separate field. Every change is one `task.status_changed` event
+(`from`, `to`, `reason`), and the projection refuses a transition these tables do not allow
+(ADR-0023).
 
 ### Task
 
@@ -61,20 +63,22 @@ are these statuses — never a separate field.
 
 ### Manual task
 
-| Status | Meaning |
-|---|---|
-| `todo` | Waits for the operator. Appears in **Needs you**. |
-| `done` | The operator marked it done. Satisfies dependants if the task has no verification. |
-| `verified` | The automatic verification passed (e.g. the secret exists). Satisfies dependants. |
+| Status | Meaning | Leaves to |
+|---|---|---|
+| `todo` | Waits for the operator. Appears in **Needs you**. | `done`, `cancelled` |
+| `done` | The operator marked it done. Satisfies dependants if the task has no verification. | `verified`, `todo` |
+| `verified` | The automatic verification passed (e.g. the secret exists). Satisfies dependants. Terminal. | — |
+| `cancelled` | No longer needed. Terminal. | — |
 
-A failed verification returns the task to `todo` with the reason.
+`done` → `todo` happens when the verification fails (with the reason) or when the operator reopens a
+task marked done by mistake.
 
 ### Story (derived)
 
-In order of precedence:
+A story without tasks is `backlog`. Otherwise, in order of precedence:
 1. `cancelled` — every task is cancelled.
 2. `done` — every non-cancelled task is `done` / `verified`.
-3. `needs_you` — any task is `needs_you`, or a manual task is `todo`.
+3. `needs_you` — any task is `needs_you` or `failed`, or a manual task is `todo`.
 4. `running` — any task is `running` or `merging`.
 5. `ready` — any task is `ready`.
 6. `blocked` — any task is `blocked`.

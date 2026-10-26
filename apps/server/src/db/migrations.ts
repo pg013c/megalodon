@@ -43,4 +43,36 @@ export const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: 3,
+    name: 'stories and tasks',
+    sql: `
+      CREATE TABLE stories (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_seq INTEGER NOT NULL
+      );
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        story_id TEXT REFERENCES stories (id),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL,
+        status_reason TEXT,
+        status_changed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_seq INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX stories_by_number ON stories (project_id, number);
+      CREATE UNIQUE INDEX tasks_by_number ON tasks (project_id, number);
+      CREATE INDEX tasks_by_story ON tasks (story_id);
+    `,
+  },
 ];

@@ -22,10 +22,10 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 - [x] Branch list (local and fetched) with diff against `main`.
 
 ## Step 2 — Stories, tasks and statuses
-- [ ] Create stories, tasks (with or without a story) and manual tasks.
-- [ ] Task and manual task statuses as projections exactly as in `CONCEPTS.md` §3.
-- [ ] Derived story status with a test for every precedence rule.
-- [ ] Board of the active project by status; manual tasks visible and completable.
+- [x] Create stories, tasks (with or without a story) and manual tasks.
+- [x] Task and manual task statuses as projections exactly as in `CONCEPTS.md` §3.
+- [x] Derived story status with a test for every precedence rule.
+- [x] Board of the active project by status; manual tasks visible and completable.
 
 ## Step 3 — Agent runtime and runs
 - [ ] `AgentRuntime` with the Claude Agent SDK implementation.

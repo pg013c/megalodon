@@ -3,6 +3,8 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 interface UiState {
   connectOpen: boolean;
   setConnectOpen: (open: boolean) => void;
+  newItemOpen: boolean;
+  setNewItemOpen: (open: boolean) => void;
 }
 
 const Context = createContext<UiState | null>(null);
@@ -10,7 +12,8 @@ const Context = createContext<UiState | null>(null);
 /** App-wide UI state that several places open (the palette, the switcher, empty states). */
 export function UiStateProvider({ children }: { children: ReactNode }) {
   const [connectOpen, setConnectOpen] = useState(false);
-  const value = useMemo(() => ({ connectOpen, setConnectOpen }), [connectOpen]);
+  const [newItemOpen, setNewItemOpen] = useState(false);
+  const value = useMemo(() => ({ connectOpen, setConnectOpen, newItemOpen, setNewItemOpen }), [connectOpen, newItemOpen]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 
