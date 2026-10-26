@@ -1,24 +1,19 @@
 import type { Requirement, Story, Task } from '@megalodon/contracts';
 import { useState } from 'react';
-import { Link } from 'react-router';
-import { useTaskDetails, useWork } from '../../data/work';
+import { useWork } from '../../data/work';
 import { columnOf, columns, coreColumns, statusLabel, type Column } from '../../lib/status';
-import { taskPath } from '../../shell/screens';
 import { useUiState } from '../../shell/UiState';
 import { Button } from '../../ui/Button';
 import { Empty } from '../../ui/Empty';
 import { ErrorText } from '../../ui/Field';
-import { Drawer } from '../../ui/Overlay';
 import { WaitingFor } from '../../ui/Requirements';
-import { StatusDot } from '../../ui/StatusBadge';
-import { TaskDetailsView } from '../task/TaskDetailsView';
 import { useProject } from './ProjectLayout';
+import { TaskDrawer } from './TaskDrawer';
 
 export function ProjectBoard() {
   const project = useProject();
   const work = useWork(project.id);
   const { setNewItemOpen } = useUiState();
-  const [storyFilter, setStoryFilter] = useState<string | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
   const [openTask, setOpenTask] = useState<string | null>(null);
 
@@ -26,7 +21,7 @@ export function ProjectBoard() {
   if (!work.data) return null;
   const { stories, tasks, requirements } = work.data;
 
-  if (stories.length === 0 && tasks.length === 0) {
+  if (tasks.length === 0) {
     return (
       <Empty
         title="Nothing here yet"
@@ -36,15 +31,14 @@ export function ProjectBoard() {
           </Button>
         }
       >
-        Add tasks for agents, manual tasks for yourself, and stories to group them.
+        Add tasks for agents and manual tasks for yourself. Stories that group them live in the Backlog.
       </Empty>
     );
   }
 
   const storiesById = new Map(stories.map((s) => [s.id, s]));
-  const visible = tasks.filter((t) => storyFilter === null || t.storyId === storyFilter);
   const byColumn = new Map<Column, Task[]>();
-  for (const task of visible) {
+  for (const task of tasks) {
     const column = columnOf(task);
     byColumn.set(column, [...(byColumn.get(column) ?? []), task]);
   }
@@ -56,7 +50,6 @@ export function ProjectBoard() {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3">
-        <StoryStrip stories={stories} selected={storyFilter} onSelect={setStoryFilter} />
         <div className="ml-auto flex items-center gap-3">
           {cancelledCount > 0 && (
             <Button variant="ghost" onClick={() => setShowCancelled((v) => !v)}>
@@ -85,36 +78,6 @@ export function ProjectBoard() {
       </div>
 
       <TaskDrawer id={openTask} onClose={() => setOpenTask(null)} />
-    </div>
-  );
-}
-
-function StoryStrip({ stories, selected, onSelect }: { stories: Story[]; selected: string | null; onSelect: (id: string | null) => void }) {
-  if (stories.length === 0) return null;
-  const chip = (active: boolean) =>
-    `flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1 text-[13px] ${
-      active ? 'border-ink bg-ink text-surface' : 'border-line bg-surface hover:bg-canvas'
-    }`;
-  return (
-    <div className="flex max-w-full gap-2 overflow-x-auto">
-      <button type="button" className={chip(selected === null)} onClick={() => onSelect(null)}>
-        All
-      </button>
-      {stories.map((story) => (
-        <button
-          key={story.id}
-          type="button"
-          className={chip(selected === story.id)}
-          onClick={() => onSelect(selected === story.id ? null : story.id)}
-          title={statusLabel[story.status]}
-        >
-          <StatusDot status={story.status} />
-          {story.title}
-          <span className="text-xs opacity-60">
-            {story.doneCount}/{story.taskCount}
-          </span>
-        </button>
-      ))}
     </div>
   );
 }
@@ -160,28 +123,5 @@ function BoardColumn({
         ))}
       </div>
     </section>
-  );
-}
-
-function TaskDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
-  const details = useTaskDetails(id);
-  const task = details.data?.task;
-  return (
-    <Drawer
-      open={id !== null}
-      onOpenChange={(open) => !open && onClose()}
-      title={task ? task.title : ''}
-      description={task ? `#${task.number}` : undefined}
-    >
-      <ErrorText error={details.error} />
-      {details.data && (
-        <>
-          <TaskDetailsView details={details.data} />
-          <Link to={taskPath(details.data.task.id)} className="mt-8 inline-block text-[13px] text-accent">
-            Open task page →
-          </Link>
-        </>
-      )}
-    </Drawer>
   );
 }

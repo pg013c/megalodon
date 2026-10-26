@@ -11,6 +11,7 @@ describe('screens', () => {
   it('finds the screen for a path, including nested paths', () => {
     expect(screenForPath('/')?.id).toBe('overview');
     expect(screenForPath('/project/board')?.id).toBe('project');
+    expect(screenForPath('/project/backlog')?.id).toBe('project');
     expect(screenForPath('/tasks/1')).toBeUndefined();
   });
 
