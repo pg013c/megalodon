@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cost, duration, linesToList, listToLines, patchLineKind, timeAgo, tokens } from './format';
+import { cost, duration, linesToList, listToLines, patchLineKind, timeAgo, tokens, versionLabel } from './format';
 
 describe('timeAgo', () => {
   const now = Date.parse('2026-10-26T12:00:00Z');
@@ -40,5 +40,12 @@ describe('run numbers', () => {
     expect(tokens(12_345)).toBe('12k');
     expect(tokens(1_234)).toBe('1.2k');
     expect(tokens(1_234_567)).toBe('1.2M');
+  });
+});
+
+describe('versionLabel', () => {
+  it('shows the version and the release tag, or dev without one', () => {
+    expect(versionLabel({ version: '0.0.0', release: 'v0.1.0' })).toBe('Megalodon 0.0.0 · v0.1.0');
+    expect(versionLabel({ version: '0.0.0', release: null })).toBe('Megalodon 0.0.0 · dev');
   });
 });

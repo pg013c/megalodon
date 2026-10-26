@@ -29,7 +29,7 @@ export const url = (path: string) => `http://127.0.0.1:${PORT}${path}`;
 const builtinLibrary = fileURLToPath(new URL('../../../../library', import.meta.url));
 
 /** The real store, projections, services and app over a database in `dir`; agents are scripted. */
-export function createTestServer(dir: string, runtime: AgentRuntime = new ScriptedRuntime(), options: { autoTriage?: boolean; now?: () => Date } = {}) {
+export function createTestServer(dir: string, runtime: AgentRuntime = new ScriptedRuntime(), options: { autoTriage?: boolean; now?: () => Date; release?: string | null } = {}) {
   const db = openDatabase(join(dir, 'test.db'));
   const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection(), new ChatProjection()]);
   const projectsQueries = new ProjectsQueries(db);
@@ -86,6 +86,6 @@ export function createTestServer(dir: string, runtime: AgentRuntime = new Script
     dataDir: dir,
     env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
   });
-  const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), chat, version: '0.0.0-test', port: PORT, webDist: null, keepAliveMs: 50 });
+  const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), chat, version: '0.0.0-test', release: options.release ?? null, port: PORT, webDist: null, keepAliveMs: 50 });
   return { db, store, projects, work, runs, library, decisions, triage, scheduler, merges, chat, app };
 }

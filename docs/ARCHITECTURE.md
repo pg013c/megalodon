@@ -183,6 +183,8 @@ Connectors behind one interface: `status()` (connected / needs login), and capab
   operator action (ADR-0013).
 - **Dev**: runs from a checkout with a throwaway data dir and free ports.
 - A lock file in the data dir prevents two servers from sharing it.
+- `/api/health` reports the release tag the server runs from (null in dev); the command palette
+  shows it next to the version.
 
 ## 13. Project settings and knowledge
 

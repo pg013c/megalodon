@@ -1,3 +1,5 @@
+import type { Health } from '@megalodon/contracts';
+
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['year', 365 * 24 * 3600],
   ['month', 30 * 24 * 3600],
@@ -54,4 +56,9 @@ export function tokens(n: number): string {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
   return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+/** "Megalodon 0.0.0 · v0.1.0", or "· dev" without a release. */
+export function versionLabel(health: Pick<Health, 'version' | 'release'>): string {
+  return `Megalodon ${health.version} · ${health.release ?? 'dev'}`;
 }
