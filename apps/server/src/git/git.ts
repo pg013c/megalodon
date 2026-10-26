@@ -55,3 +55,15 @@ export async function gitSucceeds(cwd: string, args: readonly string[]): Promise
     throw error;
   }
 }
+
+/** Runs git and reports how it ended instead of throwing on a non-zero exit. */
+export function gitResult(cwd: string, args: readonly string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { cwd, maxBuffer: 10 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } }, (error, stdout, stderr) => {
+      if (!error) return resolve({ exitCode: 0, stdout, stderr });
+      const code = (error as NodeJS.ErrnoException).code;
+      if (typeof code === 'number') return resolve({ exitCode: code, stdout, stderr });
+      reject(error);
+    });
+  });
+}

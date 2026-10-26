@@ -15,6 +15,8 @@ import { Library } from './library/library';
 import { RunsProjection, RunsQueries } from './runs/projection';
 import { agentEnv, RunService } from './runs/service';
 import { ClaudeRuntime } from './runtime/claude';
+import { MergeProjection, MergeQueries } from './merge/projection';
+import { MergeService } from './merge/service';
 import { SchedulerProjection, SchedulerQueries } from './scheduler/projection';
 import { Scheduler } from './scheduler/service';
 import { TriageService } from './triage/service';
@@ -40,7 +42,7 @@ try {
 }
 
 const db = openDatabase(join(config.dataDir, 'megalodon.db'));
-const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection()]);
+const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection()]);
 const projectsQueries = new ProjectsQueries(db);
 const projects = new ProjectService(store, projectsQueries);
 const work = new WorkService(store, new WorkQueries(db), projectsQueries);
@@ -64,8 +66,21 @@ const runs = new RunService({
   env,
 });
 const triage = new TriageService({ store, work, decisions, projects: projectsQueries, library, runtime, dataDir: config.dataDir, env, auto: true });
+const merges = new MergeService({
+  store,
+  queries: new MergeQueries(db),
+  work,
+  runs: runsQueries,
+  decisions,
+  projects: projectsQueries,
+  library,
+  runtime,
+  dataDir: config.dataDir,
+  env,
+});
 const scheduler = new Scheduler({
   store,
+  mergeBlocks: () => merges.blocks(),
   queries: new SchedulerQueries(db),
   work,
   runs,
@@ -75,8 +90,10 @@ const scheduler = new Scheduler({
 });
 runs.recover();
 triage.recover();
+await merges.recover();
+merges.start();
 scheduler.start();
-const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, version: pkg.version, port: config.port, webDist: config.webDist });
+const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, version: pkg.version, port: config.port, webDist: config.webDist });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(`Megalodon ${pkg.version} on http://${config.host}:${info.port} (data: ${config.dataDir})`);
@@ -88,6 +105,7 @@ function shutdown(): void {
   stopping = true;
   // runs keep their state as running, so the next start recovers them
   scheduler.stop();
+  merges.stop();
   void runs.shutdown();
   server.close(() => {
     db.close();

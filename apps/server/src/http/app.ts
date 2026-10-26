@@ -10,6 +10,7 @@ import type { ProjectService } from '../projects/service';
 import type { DecisionService } from '../decisions/service';
 import type { Library } from '../library/library';
 import type { RunService } from '../runs/service';
+import type { MergeService } from '../merge/service';
 import type { Scheduler } from '../scheduler/service';
 import type { TriageService } from '../triage/service';
 import type { WorkService } from '../work/service';
@@ -28,6 +29,7 @@ export interface AppDeps {
   decisions: DecisionService;
   triage: TriageService;
   scheduler: Scheduler;
+  merges: MergeService;
   version: string;
   port: number;
   /** Built web app to serve, or null in dev where Vite serves it. */
@@ -36,7 +38,7 @@ export interface AppDeps {
   keepAliveMs?: number;
 }
 
-export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
+export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, version, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
   const app = new Hono();
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 
@@ -55,7 +57,7 @@ export function createApp({ store, projects, work, runs, library, decisions, tri
   workRoutes(app, work);
   runRoutes(app, runs, library);
   decisionRoutes(app, decisions);
-  queueRoutes(app, work, triage, scheduler);
+  queueRoutes(app, work, triage, scheduler, merges);
 
   // Live event feed from now on. A client that sends Last-Event-ID (a reconnecting EventSource) or
   // ?after=<seq> first receives what it missed.

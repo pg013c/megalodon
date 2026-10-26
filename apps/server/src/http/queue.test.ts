@@ -34,6 +34,9 @@ describe('queue routes', () => {
 
     const front = await app.request(url(`/api/tasks/${a.id}/front`), send('POST'));
     expect(apiErrorSchema.parse(await front.json()).error.code).toBe('NOT_QUEUED');
+
+    const merge = await app.request(url(`/api/tasks/${a.id}/merge`), send('POST'));
+    expect(apiErrorSchema.parse(await merge.json()).error.code).toBe('NOTHING_TO_MERGE');
   });
 
   it('shows and controls the queue', async () => {
@@ -42,6 +45,7 @@ describe('queue routes', () => {
     expect(schedulerStateSchema.parse(await (await app.request(url('/api/queue/pause'), send('POST'))).json()).paused).toBe('operator');
     const view = queueViewSchema.parse(await (await app.request(url('/api/queue'))).json());
     expect(view.state).toEqual({ slots: 4, paused: 'operator', pausedUntil: null });
+    expect(view.mergeBlocked).toEqual([]);
     expect(schedulerStateSchema.parse(await (await app.request(url('/api/queue/resume'), send('POST'))).json()).paused).toBeNull();
     const bad = await app.request(url('/api/queue/slots'), send('PUT', { slots: 0 }));
     expect(apiErrorSchema.parse(await bad.json()).error.code).toBe('INVALID_REQUEST');

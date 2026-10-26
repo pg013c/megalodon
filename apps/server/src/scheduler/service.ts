@@ -3,6 +3,7 @@ import {
   SCHEDULER_STREAM,
   schedulerEvents,
   type Actor,
+  type MergeBlock,
   type QueueEntry,
   type QueueView,
   type Requirement,
@@ -35,6 +36,8 @@ export interface SchedulerDeps {
   /** Where commands of external dependencies log. */
   logDir: string;
   now?: () => Date;
+  /** Projects whose merges wait for the operator's checkout, for the queue view. */
+  mergeBlocks?: () => MergeBlock[];
 }
 
 /**
@@ -116,6 +119,7 @@ export class Scheduler {
         .inStatus(['ready', 'blocked'])
         .filter((t) => t.kind === 'task')
         .map((t) => entry(t, this.deps.work.requirements(t).filter((r) => !r.met))),
+      mergeBlocked: this.deps.mergeBlocks?.() ?? [],
     };
   }
 

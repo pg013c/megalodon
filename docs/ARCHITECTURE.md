@@ -146,18 +146,19 @@ The scheduler is paused while a plan limit is active and resumes when it resets.
 
 ## 9. Merge queue
 
-One serial queue per project:
+One serial queue per project (ADR-0027):
 
-1. Detect conflicts with `main` without touching any checkout (`git merge-tree`).
-2. Bring the task branch up to date with `main` in the run's worktree.
-3. Re-run the project checks.
-4. Evaluate the merge gate.
-5. Check the operator's checkout: on `main`, no uncommitted tracked changes. Otherwise the queue
-   waits and **Needs you** says why.
-6. `git merge --no-ff` in the operator's checkout (ADR-0014); record `merge.completed`; clean up the
-   run worktree.
+1. A finished run enters the queue when its gate passed and it touches no sensitive path;
+   otherwise it waits for the operator's **Merge**.
+2. If the base moved: predict conflicts without touching any checkout (`git merge-tree`), merge
+   the base into the task's branch in its worktree, let the resolver agent settle conflicts (two
+   attempts), then run setup and checks again.
+3. Check the operator's checkout: on `main`, no merge in progress, no uncommitted tracked changes.
+   Otherwise the project's merges wait and the queue panel says why.
+4. `git merge --no-ff` in the operator's checkout (ADR-0014); remove the worktree and branch; the
+   task is `done`.
 
-Conflict or failed checks: the conflict agent tries up to two times, then `needs_you`.
+Anything that fails sends the task to `needs_you` with the reason.
 
 ## 10. Integrations
 

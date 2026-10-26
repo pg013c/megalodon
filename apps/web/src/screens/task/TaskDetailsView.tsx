@@ -1,5 +1,6 @@
 import { canTransition, type HistoryEntry, type Task, type TaskDetails } from '@megalodon/contracts';
 import { useState } from 'react';
+import { useTaskRuns } from '../../data/runs';
 import { useTaskAction, useUpdateTask, useWork, type TaskAction } from '../../data/work';
 import { timeAgo } from '../../lib/format';
 import { statusLabel } from '../../lib/status';
@@ -31,10 +32,14 @@ export function TaskDetailsView({ details }: { details: TaskDetails }) {
 
 function Actions({ task }: { task: Task }) {
   const action = useTaskAction(task.id);
+  const runs = useTaskRuns(task.id);
+  const latest = runs.data?.[0];
+  const mergeable = task.status === 'needs_you' && !!latest?.commitSha && (latest.status === 'succeeded' || latest.status === 'failed');
   const allowed = (to: string) => canTransition(task.kind, task.status, to);
   const run = (a: TaskAction) => action.mutate({ action: a });
 
   const buttons: { action: TaskAction; label: string; show: boolean; variant: 'primary' | 'secondary' }[] = [
+    { action: 'merge', label: 'Merge', show: mergeable, variant: 'primary' },
     { action: 'complete', label: 'Mark done', show: task.kind === 'manual' && allowed('done'), variant: 'primary' },
     { action: 'reopen', label: 'Reopen', show: task.kind === 'manual' && allowed('todo'), variant: 'secondary' },
     { action: 'cancel', label: 'Cancel task', show: allowed('cancelled'), variant: 'secondary' },
@@ -173,6 +178,20 @@ function describe(entry: HistoryEntry): string {
       return 'External dependency met';
     case 'decision.made':
       return 'Decision recorded';
+    case 'merge.started':
+      return 'Merge started';
+    case 'merge.updated':
+      return 'Brought up to date with the base';
+    case 'merge.conflict':
+      return `Conflicts: ${((entry.data as { files?: string[] }).files ?? []).join(', ')}`;
+    case 'merge.resolved':
+      return ((entry.data as { remaining?: string[] }).remaining ?? []).length ? 'The resolver left conflicts' : 'The resolver settled the conflicts';
+    case 'merge.completed':
+      return `Merged${(entry.data as { sha?: string }).sha ? ` as ${(entry.data as { sha: string }).sha.slice(0, 8)}` : ''}`;
+    case 'merge.failed':
+      return `Merge stopped — ${(entry.data as { reason?: string }).reason ?? ''}`;
+    case 'merge.recovered':
+      return (entry.data as { detail?: string }).detail ?? 'Recovered after a restart';
     default:
       return entry.type;
   }

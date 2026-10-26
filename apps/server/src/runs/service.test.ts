@@ -67,7 +67,7 @@ describe('RunService: one agent', () => {
     expect(finished.run.usage).toMatchObject({ costUsd: 0.01, inputTokens: 100, outputTokens: 50 });
     expect(finished.steps).toMatchObject([{ stepId: 'agent', attempt: 1, status: 'succeeded', agentId: 'implementer', sessionId: 'session-1', numTurns: 2 }]);
     expect(finished.steps[0]?.agentVersion).toMatch(/^[0-9a-f]{12}$/);
-    expect(finished.timeline.map((e) => (e.item.type === 'message' ? e.item.message.kind : e.item.type))).toEqual(['text', 'tool_use', 'tool_result']);
+    expect(finished.timeline.map((e) => (e.item.type === 'message' ? e.item.message.kind : e.item.type))).toEqual(['text', 'tool_use', 'tool_result', 'decision']);
 
     // the agent worked in the worktree, never in the operator's checkout
     expect(runtime.calls[0]?.cwd).toBe(finished.run.worktreePath);
@@ -77,7 +77,10 @@ describe('RunService: one agent', () => {
     expect(sh(root, 'show', 'megalodon/1-say-hello:hello.txt')).toBe('hi\n');
     expect(sh(root, 'log', '-1', '--format=%s', 'megalodon/1-say-hello').trim()).toBe('#1 Say hello');
 
-    expect(work.details(task.id).task).toMatchObject({ status: 'needs_you', statusReason: 'Review megalodon/1-say-hello' });
+    expect(work.details(task.id).task).toMatchObject({
+      status: 'needs_you',
+      statusReason: 'The pipeline has no gate; review megalodon/1-say-hello and merge it.',
+    });
   });
 
   it('runs the project setup commands first, in the worktree', async () => {
@@ -197,10 +200,14 @@ describe('RunService: the feature pipeline', () => {
     expect(made.map((d) => [d.kind, d.outcome, d.actor.kind])).toEqual([
       ['review.verdict', 'approve', 'agent'],
       ['gate', 'pass', 'policy'],
+      ['merge', 'merge', 'policy'],
     ]);
     expect(made[1]?.rationale).toBe('Reviewer approved with 8/10 (at least 7 needed).');
-    expect(details.timeline.filter((e) => e.item.type === 'decision')).toHaveLength(2);
-    expect(work.details(task.id).task.statusReason).toBe(`Reviewer approved with 8/10 (at least 7 needed). Review ${details.run.branch}.`);
+    expect(details.timeline.filter((e) => e.item.type === 'decision')).toHaveLength(3);
+    expect(work.details(task.id).task).toMatchObject({
+      status: 'merging',
+      statusReason: 'Reviewer approved with 8/10 (at least 7 needed). Queued to merge.',
+    });
   });
 
   it('sends failing checks back to the implementer, who continues its session', async () => {
@@ -258,6 +265,7 @@ describe('RunService: the feature pipeline', () => {
       'retry:retry implement',
       'review.verdict:approve',
       'gate:pass',
+      'merge:merge',
     ]);
   });
 

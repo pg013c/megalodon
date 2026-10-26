@@ -218,4 +218,15 @@ export const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: 7,
+    name: 'merge queue blocks',
+    sql: `
+      CREATE TABLE merge_blocks (
+        project_id TEXT PRIMARY KEY,
+        reason TEXT NOT NULL,
+        since TEXT NOT NULL
+      );
+    `,
+  },
 ];

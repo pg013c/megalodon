@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeBlockSchema } from './merge';
 import { requirementSchema, taskSchema } from './work';
 
 /** The global queue (CONCEPTS.md §5, ADR-0007). */
@@ -25,6 +26,8 @@ export const queueViewSchema = z.object({
   running: z.array(queueEntrySchema),
   /** Ready and blocked tasks in the order the scheduler considers them. */
   waiting: z.array(queueEntrySchema),
+  /** Projects whose merges wait for the operator's checkout. */
+  mergeBlocked: z.array(mergeBlockSchema),
 });
 export type QueueView = z.infer<typeof queueViewSchema>;
 

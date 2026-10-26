@@ -11,6 +11,8 @@ import { Library } from '../library/library';
 import { RunsProjection, RunsQueries } from '../runs/projection';
 import { RunService } from '../runs/service';
 import type { AgentRuntime } from '../runtime/types';
+import { MergeProjection, MergeQueries } from '../merge/projection';
+import { MergeService } from '../merge/service';
 import { SchedulerProjection, SchedulerQueries } from '../scheduler/projection';
 import { Scheduler } from '../scheduler/service';
 import { TriageService } from '../triage/service';
@@ -26,7 +28,7 @@ const builtinLibrary = fileURLToPath(new URL('../../../../library', import.meta.
 /** The real store, projections, services and app over a database in `dir`; agents are scripted. */
 export function createTestServer(dir: string, runtime: AgentRuntime = new ScriptedRuntime(), options: { autoTriage?: boolean; now?: () => Date } = {}) {
   const db = openDatabase(join(dir, 'test.db'));
-  const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection()]);
+  const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection()]);
   const projectsQueries = new ProjectsQueries(db);
   const projects = new ProjectService(store, projectsQueries);
   const work = new WorkService(store, new WorkQueries(db), projectsQueries);
@@ -55,8 +57,20 @@ export function createTestServer(dir: string, runtime: AgentRuntime = new Script
     env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
     auto: options.autoTriage ?? false,
   });
-  // tests drive the scheduler with tick(); start() is never called
-  const scheduler = new Scheduler({ store, queries: new SchedulerQueries(db), work, runs, runsQueries, projects: projectsQueries, logDir: join(dir, 'logs'), ...(options.now ? { now: options.now } : {}) });
-  const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, version: '0.0.0-test', port: PORT, webDist: null, keepAliveMs: 50 });
-  return { db, store, projects, work, runs, library, decisions, triage, scheduler, app };
+  // tests drive the scheduler and the merge queue with tick(); start() is never called
+  const merges = new MergeService({
+    store,
+    queries: new MergeQueries(db),
+    work,
+    runs: runsQueries,
+    decisions,
+    projects: projectsQueries,
+    library,
+    runtime,
+    dataDir: dir,
+    env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
+  });
+  const scheduler = new Scheduler({ mergeBlocks: () => merges.blocks(), store, queries: new SchedulerQueries(db), work, runs, runsQueries, projects: projectsQueries, logDir: join(dir, 'logs'), ...(options.now ? { now: options.now } : {}) });
+  const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, version: '0.0.0-test', port: PORT, webDist: null, keepAliveMs: 50 });
+  return { db, store, projects, work, runs, library, decisions, triage, scheduler, merges, app };
 }

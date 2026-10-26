@@ -29,6 +29,7 @@ import type { ProjectsQueries } from '../projects/projection';
 import type { AgentRuntime } from '../runtime/types';
 import type { WorkService } from '../work/service';
 import { runCommand } from './command';
+import { changedFiles, globToRegExp } from '../merge/git';
 import { addWorktree, branchDiff, commitAll, head, revParse, taskBranch, worktreeExists } from './git';
 import { buildPlan, runPosition, type RunPosition } from './plan';
 import type { RunsQueries } from './projection';
@@ -75,7 +76,7 @@ type StepOutcome =
 
 /** How a finished run leaves its task. */
 type Ending =
-  | { status: 'succeeded'; reason: string; commitSha: string | null }
+  | { status: 'succeeded'; reason: string; commitSha: string | null; taskTo: 'needs_you' | 'merging' }
   /** `needs_you`: the run produced something to look at, but checks or review never passed. */
   | { status: 'failed'; error: string; taskTo: 'needs_you' | 'failed'; commitSha?: string | null }
   | { status: 'cancelled'; error: string };
@@ -282,14 +283,42 @@ export class RunService {
       Object.assign(position, runPosition(this.deps.store.readStream(runStream(runId)), plan));
     }
 
-    const gate = this.deps.decisions.queries.effective(runId, 'gate');
     const commitSha = await this.commitSha(run);
-    const reason = !commitSha
-      ? 'The run finished without changing any files'
-      : gate
+    if (!commitSha) return this.finish(run, { status: 'succeeded', reason: 'The run finished without changing any files', commitSha, taskTo: 'needs_you' });
+    const merge = await this.mergeDecision(run, task, project);
+    this.finish(run, { status: 'succeeded', reason: merge.rationale, commitSha, taskTo: merge.outcome === 'merge' ? 'merging' : 'needs_you' });
+  }
+
+  /**
+   * Whether a finished run goes straight to the merge queue: its gate passed and it changes no
+   * sensitive path. Recorded as a decision the operator can override (ADR-0027).
+   */
+  private async mergeDecision(run: Run, task: Task, project: Project) {
+    const gate = this.deps.decisions.queries.effective(run.id, 'gate');
+    const changed = await changedFiles(run.worktreePath, run.baseSha);
+    const sensitive = changed.filter((file) => project.settings.sensitivePaths.some((glob) => globToRegExp(glob).test(file)));
+    const merge = gate?.outcome === 'pass' && sensitive.length === 0;
+    const rationale = !gate
+      ? `The pipeline has no gate; review ${run.branch} and merge it.`
+      : gate.outcome !== 'pass'
         ? `${gate.rationale} Review ${run.branch}.`
-        : `Review ${run.branch}`;
-    this.finish(run, { status: 'succeeded', reason, commitSha });
+        : sensitive.length
+          ? `${gate.rationale} It changes sensitive paths (${sensitive.slice(0, 3).join(', ')}${sensitive.length > 3 ? ', …' : ''}); review ${run.branch} and merge it.`
+          : `${gate.rationale} Queued to merge.`;
+    this.deps.store.append([
+      this.deps.decisions.event({
+        taskId: task.id,
+        runId: run.id,
+        stepId: null,
+        kind: 'merge',
+        outcome: merge ? 'merge' : 'hold',
+        rationale,
+        alternatives: ['merge', 'hold'],
+        inputs: { gate: gate?.outcome ?? null, sensitive, changed: changed.length },
+        actor: { kind: 'policy', policy: 'merge-gate' },
+      }),
+    ]);
+    return { outcome: merge ? 'merge' : 'hold', rationale };
   }
 
   /** The branch's last commit, or null when the run committed nothing. */
@@ -494,7 +523,7 @@ export class RunService {
     });
     const task = this.task(run.taskId);
     if (task.status !== 'running') return; // e.g. the task was cancelled
-    if (ending.status === 'succeeded') this.deps.work.transition(task.id, 'needs_you', ending.reason, SYSTEM);
+    if (ending.status === 'succeeded') this.deps.work.transition(task.id, ending.taskTo, ending.reason, { kind: 'policy', policy: 'merge-gate' });
     else if (ending.status === 'failed') this.deps.work.transition(task.id, ending.taskTo, ending.error, SYSTEM);
     else this.deps.work.transition(task.id, 'failed', ending.error, SYSTEM);
   }

@@ -12,7 +12,7 @@ export function QueuePanel() {
   const queue = useQueue();
   const control = useQueueControl();
   if (!queue.data) return <ErrorText error={queue.error} />;
-  const { state, running, waiting } = queue.data;
+  const { state, running, waiting, mergeBlocked } = queue.data;
 
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
@@ -46,9 +46,14 @@ export function QueuePanel() {
             : 'Paused by you. Nothing new starts.'}
         </p>
       )}
+      {mergeBlocked.map((block) => (
+        <p key={block.projectId} className="mt-3 rounded-lg bg-[#ff375f]/10 px-3 py-2 text-[13px] text-[#c4123f]">
+          <span className="font-medium">{block.projectName}: merges wait.</span> {block.reason}
+        </p>
+      ))}
       <ErrorText error={control.error} />
       <div className="mt-4 grid gap-6 md:grid-cols-2">
-        <QueueList title="Running" entries={running} empty="Nothing runs right now." />
+        <QueueList title="Running and merging" entries={running} empty="Nothing runs right now." />
         <QueueList title="Waiting" entries={waiting} empty="The queue is empty." />
       </div>
     </section>

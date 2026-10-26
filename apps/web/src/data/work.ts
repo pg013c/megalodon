@@ -55,7 +55,7 @@ export function useUpdateTask(id: string) {
   });
 }
 
-export type TaskAction = 'cancel' | 'complete' | 'reopen' | 'queue' | 'retry' | 'front' | 'triage';
+export type TaskAction = 'cancel' | 'complete' | 'reopen' | 'queue' | 'retry' | 'front' | 'triage' | 'merge';
 
 export function useTaskAction(id: string) {
   const invalidate = useInvalidateWork();

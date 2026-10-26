@@ -9,12 +9,13 @@ import {
   type Task,
 } from '@megalodon/contracts';
 import type { Hono } from 'hono';
+import type { MergeService } from '../merge/service';
 import type { Scheduler } from '../scheduler/service';
 import type { TriageService } from '../triage/service';
 import type { WorkService } from '../work/service';
 import { readBody } from './body';
 
-export function queueRoutes(app: Hono, work: WorkService, triage: TriageService, scheduler: Scheduler): void {
+export function queueRoutes(app: Hono, work: WorkService, triage: TriageService, scheduler: Scheduler, merges: MergeService): void {
   const task = (id: string) => work.queries.task(id)!;
 
   app.post('/api/tasks/:id/triage', (c) => {
@@ -24,6 +25,7 @@ export function queueRoutes(app: Hono, work: WorkService, triage: TriageService,
   app.post('/api/tasks/:id/queue', (c) => c.json<Task>(work.queue(c.req.param('id'))));
   app.post('/api/tasks/:id/retry', (c) => c.json<Task>(work.retry(c.req.param('id'))));
   app.post('/api/tasks/:id/front', (c) => c.json<Task>(work.moveToFront(c.req.param('id'))));
+  app.post('/api/tasks/:id/merge', (c) => c.json<Task>(merges.enqueue(c.req.param('id'))));
 
   app.put('/api/tasks/:id/touches', async (c) => {
     const { touches } = await readBody(c, setTouchesBodySchema);

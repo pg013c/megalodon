@@ -48,12 +48,12 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 - [x] Pause on plan limit and resume after it.
 
 ## Step 6 — Merge queue
-- [ ] Serial merge queue per project: conflict detection, update from `main`, checks, gate, merge in
+- [x] Serial merge queue per project: conflict detection, update from `main`, checks, gate, merge in
       the operator's checkout (ADR-0014), worktree cleanup.
-- [ ] Dirty checkout or checkout off `main` pauses the project's merges and shows in Needs you.
-- [ ] A merge interrupted by a restart is aborted or reconciled on startup.
-- [ ] Conflict agent with two attempts, then `needs_you`.
-- [ ] Merged task makes its dependants `ready`.
+- [x] Dirty checkout or checkout off `main` pauses the project's merges and shows in Needs you.
+- [x] A merge interrupted by a restart is aborted or reconciled on startup.
+- [x] Conflict agent with two attempts, then `needs_you`.
+- [x] Merged task makes its dependants `ready`.
 
 ## Step 7 — Policies and Needs you
 - [ ] Project settings section with every gate's policy and its conditions.
