@@ -7,6 +7,7 @@ import { useTaskDetails } from '../../data/work';
 import { cost, duration, timeAgo, tokens } from '../../lib/format';
 import { taskPath } from '../../shell/screens';
 import { Button } from '../../ui/Button';
+import { CopyButton } from '../../ui/CopyButton';
 import { ErrorText } from '../../ui/Field';
 import { StatusBadge, StatusDot } from '../../ui/StatusBadge';
 import { DecisionCard } from './DecisionCard';
@@ -35,6 +36,7 @@ function RunView({ details }: { details: RunDetails }) {
       )}
       <div className="mt-2 flex flex-wrap items-center gap-4">
         <h1 className="font-mono text-xl tracking-tight">{run.branch}</h1>
+        <CopyButton text={run.branch} label="Copy branch" />
         <span className="text-xs text-muted">
           {run.pipelineId} · v{run.pipelineVersion.slice(0, 7)}
         </span>
