@@ -69,27 +69,27 @@ name: Implementer
 model: claude-opus-5-5
 tools: [read, edit, bash, mcp:context7]
 permissions: { network: false, paths: [worktree] }
-output: schemas/implementation-result.json
+# output: plan | review       (optional output contract, ADR-0025)
 ---
 You are a senior engineer who implements an approved plan in small, tested steps…
 ```
 
-A **pipeline** is a YAML file:
+A **pipeline** is a YAML file (ADR-0025):
 
 ```yaml
-id: feature
 name: Feature
 steps:
   - id: plan
-    agent: planner
+    agent: planner               # output: plan
   - id: implement
     agent: implementer
   - id: checks
-    check: project.checks        # tests, lint, typecheck from project settings
-    onFail: { retry: implement, max: 2 }
+    check: project               # the project's checks (ADR-0015)
+    onFail: { retry: implement, max: project }
   - id: review
-    agent: reviewer
-    gate: merge                  # evaluated against the project's merge policy
+    agent: reviewer              # output: review
+    gate: { minScore: 7 }
+    onFail: { retry: implement, max: 1 }
 ```
 
 Each run records the content hash of every agent and pipeline it used; evaluation groups by these

@@ -35,10 +35,10 @@ The current step is the first with unchecked criteria. Each step ends with `pnpm
 - [x] Runs active at shutdown are resumed or failed with a reason on startup.
 
 ## Step 4 — Pipelines and decisions
-- [ ] Pipeline YAML with agent steps, checks, retry and gate rules.
-- [ ] Default `feature` pipeline: plan → implement → checks → review.
-- [ ] Run timeline: position in the pipeline, every message, tool call and decision.
-- [ ] Decisions recorded with actor, rationale and alternatives; operator override as a new decision.
+- [x] Pipeline YAML with agent steps, checks, retry and gate rules.
+- [x] Default `feature` pipeline: plan → implement → checks → review.
+- [x] Run timeline: position in the pipeline, every message, tool call and decision.
+- [x] Decisions recorded with actor, rationale and alternatives; operator override as a new decision.
 
 ## Step 5 — Triage, dependencies and scheduler
 - [ ] Triage lane and triage agent producing dependencies, touch-set, pipeline and manual tasks.

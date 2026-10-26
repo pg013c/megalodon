@@ -1,12 +1,13 @@
-import type { Agent } from '@megalodon/contracts';
+import type { Agent, Pipeline } from '@megalodon/contracts';
 import { useState } from 'react';
-import { useAgents } from '../../data/runs';
+import { useAgents, usePipelines } from '../../data/runs';
 import { ErrorText } from '../../ui/Field';
 import { Drawer } from '../../ui/Overlay';
 
 /** The agents Megalodon can run. Pipelines and evaluations join them in later steps. */
 export function LibraryScreen() {
   const agents = useAgents();
+  const pipelines = usePipelines();
   const [open, setOpen] = useState<Agent | null>(null);
   return (
     <section>
@@ -15,8 +16,15 @@ export function LibraryScreen() {
         Agents are Markdown files: built-in ones ship with Megalodon, your own live in the library folder of the data directory and win on
         the same name.
       </p>
-      <ErrorText error={agents.error} />
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ErrorText error={agents.error ?? pipelines.error} />
+      <h2 className="mt-10 text-xs font-medium uppercase tracking-wide text-muted">Pipelines</h2>
+      <div className="mt-3 space-y-3">
+        {pipelines.data?.map((pipeline) => (
+          <PipelineCard key={pipeline.id} pipeline={pipeline} />
+        ))}
+      </div>
+      <h2 className="mt-10 text-xs font-medium uppercase tracking-wide text-muted">Agents</h2>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {agents.data?.map((agent) => (
           <button
             key={agent.id}
@@ -47,5 +55,35 @@ export function LibraryScreen() {
         <pre className="whitespace-pre-wrap font-sans text-[14px] leading-6">{open?.instructions}</pre>
       </Drawer>
     </section>
+  );
+}
+
+function PipelineCard({ pipeline }: { pipeline: Pipeline }) {
+  return (
+    <div className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[15px] font-semibold">{pipeline.name}</span>
+        <span className="font-mono text-xs text-muted">
+          {pipeline.id}.yaml · v{pipeline.version.slice(0, 7)}
+        </span>
+      </div>
+      <p className="mt-1 text-[13px] text-muted">{pipeline.description}</p>
+      <ol className="mt-4 flex flex-wrap items-center gap-2 text-[13px]">
+        {pipeline.steps.map((step, i) => (
+          <li key={step.id} className="flex items-center gap-2">
+            {i > 0 && <span className="text-muted">→</span>}
+            <span className="rounded-full border border-line px-3 py-1">
+              {step.name ?? ('agent' in step ? step.agent : 'Checks')}
+              {'gate' in step && step.gate && <span className="ml-2 text-xs text-muted">gate ≥ {step.gate.minScore}</span>}
+              {step.onFail && (
+                <span className="ml-2 text-xs text-muted">
+                  ↺ {step.onFail.retry} ×{step.onFail.max === 'project' ? 'fix passes' : step.onFail.max}
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

@@ -39,3 +39,17 @@ export async function commitAll(cwd: string, message: string): Promise<string | 
   await git(cwd, ['commit', '-q', '--no-verify', '-m', message]);
   return (await git(cwd, ['rev-parse', 'HEAD'])).trim();
 }
+
+const DIFF_LIMIT = 60_000;
+
+/** What the branch changed since `baseSha`, for the reviewer: a stat, then the patch, clipped. */
+export async function branchDiff(cwd: string, baseSha: string): Promise<string> {
+  const stat = await git(cwd, ['diff', '--stat', `${baseSha}...HEAD`]);
+  const patch = await git(cwd, ['diff', `${baseSha}...HEAD`], { maxBytes: 20 * 1024 * 1024 });
+  const text = `${stat}\n${patch}`;
+  return text.length <= DIFF_LIMIT ? text : `${text.slice(0, DIFF_LIMIT)}\n… (diff clipped; read the files for the rest)`;
+}
+
+export async function head(cwd: string): Promise<string> {
+  return (await git(cwd, ['rev-parse', 'HEAD'])).trim();
+}

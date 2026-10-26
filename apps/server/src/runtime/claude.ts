@@ -1,5 +1,6 @@
 import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import { zeroUsage, type Usage } from '@megalodon/contracts';
+import { outputContracts, zeroUsage, type Usage } from '@megalodon/contracts';
+import { z } from 'zod';
 import { clip, type AgentRunInput, type AgentRuntime, type RuntimeEvent } from './types';
 
 const TOOL_INPUT_LIMIT = 4_000;
@@ -52,7 +53,17 @@ export function claudeOptions(input: AgentRunInput, abortController: AbortContro
     ...(agent.maxTurns ? { maxTurns: agent.maxTurns } : {}),
     ...(agent.maxBudgetUsd ? { maxBudgetUsd: agent.maxBudgetUsd } : {}),
     ...(input.resumeSessionId ? { resume: input.resumeSessionId } : {}),
+    ...(agent.output ? { outputFormat: { type: 'json_schema', schema: jsonSchema(agent.output) } } : {}),
   };
+}
+
+/**
+ * The output contract as JSON Schema for Claude Code's `--json-schema`, whose validator does not
+ * know the draft 2020-12 meta-schema zod points to; draft 7 without `$schema` validates the same.
+ */
+export function jsonSchema(contract: keyof typeof outputContracts): Record<string, unknown> {
+  const { $schema: _ignored, ...schema } = z.toJSONSchema(outputContracts[contract], { target: 'draft-7' }) as Record<string, unknown>;
+  return schema;
 }
 
 /** Translates one SDK message into runtime events; everything else the SDK emits is ignored. */
@@ -101,6 +112,7 @@ export function mapSdkMessage(message: SDKMessage): RuntimeEvent[] {
           type: 'result',
           ok,
           result: message.subtype === 'success' ? message.result : null,
+          ...(message.subtype === 'success' && message.structured_output !== undefined ? { output: message.structured_output } : {}),
           error: ok ? null : message.subtype === 'success' ? message.result : `${message.subtype}: ${message.errors.join('; ')}`,
           usage,
           durationMs: message.duration_ms,

@@ -18,6 +18,8 @@ export type RuntimeEvent =
       type: 'result';
       ok: boolean;
       result: string | null;
+      /** The structured answer, for agents with an output contract. */
+      output?: unknown;
       error: string | null;
       usage: Usage;
       durationMs: number;

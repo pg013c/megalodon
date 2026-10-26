@@ -5,7 +5,9 @@ import { EventStore } from '../events/store';
 import { createApp } from '../http/app';
 import { ProjectsProjection, ProjectsQueries } from '../projects/projection';
 import { ProjectService } from '../projects/service';
-import { AgentLibrary } from '../library/agents';
+import { DecisionsProjection, DecisionsQueries } from '../decisions/projection';
+import { DecisionService } from '../decisions/service';
+import { Library } from '../library/library';
 import { RunsProjection, RunsQueries } from '../runs/projection';
 import { RunService } from '../runs/service';
 import type { AgentRuntime } from '../runtime/types';
@@ -21,21 +23,23 @@ const builtinLibrary = fileURLToPath(new URL('../../../../library', import.meta.
 /** The real store, projections, services and app over a database in `dir`; agents are scripted. */
 export function createTestServer(dir: string, runtime: AgentRuntime = new ScriptedRuntime()) {
   const db = openDatabase(join(dir, 'test.db'));
-  const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection()]);
+  const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection()]);
   const projectsQueries = new ProjectsQueries(db);
   const projects = new ProjectService(store, projectsQueries);
   const work = new WorkService(store, new WorkQueries(db), projectsQueries);
-  const library = new AgentLibrary([{ source: 'builtin', path: builtinLibrary }]);
+  const library = new Library([{ source: 'builtin', path: builtinLibrary }]);
+  const decisions = new DecisionService(store, new DecisionsQueries(db));
   const runs = new RunService({
     store,
     runs: new RunsQueries(db),
     work,
+    decisions,
     projects: projectsQueries,
     library,
     runtime,
     dataDir: dir,
     env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
   });
-  const app = createApp({ store, projects, work, runs, library, version: '0.0.0-test', port: PORT, webDist: null, keepAliveMs: 50 });
-  return { db, store, projects, work, runs, library, app };
+  const app = createApp({ store, projects, work, runs, library, decisions, version: '0.0.0-test', port: PORT, webDist: null, keepAliveMs: 50 });
+  return { db, store, projects, work, runs, library, decisions, app };
 }

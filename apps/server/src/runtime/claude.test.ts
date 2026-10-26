@@ -1,7 +1,7 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Agent } from '@megalodon/contracts';
 import { describe, expect, it } from 'vitest';
-import { claudeOptions, mapSdkMessage } from './claude';
+import { claudeOptions, jsonSchema, mapSdkMessage } from './claude';
 
 // SDK messages carry many more fields; the mapping reads only these.
 const sdk = (message: object) => message as unknown as SDKMessage;
@@ -47,6 +47,22 @@ describe('claudeOptions', () => {
       new AbortController(),
     );
     expect(options.resume).toBe('s1');
+  });
+});
+
+describe('jsonSchema', () => {
+  it('gives the output contract without a meta-schema reference', () => {
+    const schema = jsonSchema('review');
+    expect(schema.$schema).toBeUndefined();
+    expect(schema).toMatchObject({ type: 'object', required: expect.arrayContaining(['verdict', 'score', 'summary', 'findings']) });
+  });
+
+  it('is passed as the output format of agents with a contract', () => {
+    const options = claudeOptions(
+      { agent: { ...agent, output: 'plan' }, cwd: '/wt', prompt: 'x', env: {}, signal: new AbortController().signal },
+      new AbortController(),
+    );
+    expect(options.outputFormat).toEqual({ type: 'json_schema', schema: jsonSchema('plan') });
   });
 });
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { outputContractSchema } from './outputs';
 
 /** Built-in tools of the Claude runtime an agent may be given (ADR-0024). */
 export const builtinTools = ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'TodoWrite'] as const;
@@ -22,6 +23,8 @@ export const agentFrontMatterSchema = z
     mcpServers: z.record(z.string(), mcpServerSchema).default({}),
     maxTurns: z.number().int().positive().optional(),
     maxBudgetUsd: z.number().positive().optional(),
+    /** The output contract the agent must answer with (`outputs.ts`). */
+    output: outputContractSchema.optional(),
   })
   .superRefine((agent, ctx) => {
     for (const tool of agent.tools) {
@@ -43,6 +46,7 @@ export const agentSchema = z.object({
   mcpServers: z.record(z.string(), mcpServerSchema),
   maxTurns: z.number().optional(),
   maxBudgetUsd: z.number().optional(),
+  output: outputContractSchema.optional(),
   instructions: z.string(),
   /** `builtin`: shipped in the repository; `library`: the operator's own, which wins on the same id. */
   source: z.enum(['builtin', 'library']),

@@ -1,0 +1,15 @@
+name: Feature
+description: Plan, implement, check and review one task. Failing checks go back to the implementer;
+  so does a review that asks for changes.
+steps:
+  - id: plan
+    agent: planner
+  - id: implement
+    agent: implementer
+  - id: checks
+    check: project
+    onFail: { retry: implement, max: project }
+  - id: review
+    agent: reviewer
+    gate: { minScore: 7 }
+    onFail: { retry: implement, max: 1 }

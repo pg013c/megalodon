@@ -4,3 +4,6 @@ export * from './projects';
 export * from './work';
 export * from './agents';
 export * from './runs';
+export * from './outputs';
+export * from './pipelines';
+export * from './decisions';

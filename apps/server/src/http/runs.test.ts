@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { agentSchema, apiErrorSchema, runDetailsSchema, runSchema } from '@megalodon/contracts';
+import { agentSchema, apiErrorSchema, decisionSchema, pipelineSchema, runDetailsSchema, runSchema } from '@megalodon/contracts';
 import { describe, expect, it } from 'vitest';
 import { initRepo } from '../test/repo';
 import { createTestServer, url } from '../test/server';
@@ -17,7 +17,13 @@ describe('run routes', () => {
     const agents = agentSchema.array().parse(await (await app.request(url('/api/agents'))).json());
     expect(agents.map((a) => a.id)).toContain('implementer');
 
-    const started = await app.request(url(`/api/tasks/${task.id}/runs`), post());
+    const pipelines = pipelineSchema.array().parse(await (await app.request(url('/api/pipelines'))).json());
+    expect(pipelines.map((p) => p.id)).toContain('feature');
+
+    const both = await app.request(url(`/api/tasks/${task.id}/runs`), post({ pipelineId: 'feature', agentId: 'implementer' }));
+    expect(apiErrorSchema.parse(await both.json()).error.code).toBe('INVALID_REQUEST');
+
+    const started = await app.request(url(`/api/tasks/${task.id}/runs`), post({ agentId: 'implementer' }));
     expect(started.status).toBe(201);
     const run = runSchema.parse(await started.json());
     await runs.idle();
@@ -28,5 +34,9 @@ describe('run routes', () => {
 
     const stop = await app.request(url(`/api/runs/${run.id}/stop`), post());
     expect(apiErrorSchema.parse(await stop.json()).error.code).toBe('RUN_NOT_RUNNING');
+
+    expect(decisionSchema.array().parse(await (await app.request(url(`/api/tasks/${task.id}/decisions`))).json())).toEqual([]);
+    const missing = await app.request(url('/api/decisions/nope/override'), post({ outcome: 'pass', rationale: 'x' }));
+    expect(apiErrorSchema.parse(await missing.json()).error.code).toBe('DECISION_NOT_FOUND');
   });
 });

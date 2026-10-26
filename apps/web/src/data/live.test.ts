@@ -10,6 +10,7 @@ describe('staleKeys', () => {
     expect(staleKeys('run.started')).toEqual([['runs']]);
     expect(staleKeys('step.completed')).toEqual([['runs']]);
     expect(staleKeys('step.message')).toEqual([]);
+    expect(staleKeys('decision.made')).toEqual([['runs']]);
     expect(staleKeys('other.thing')).toEqual([]);
   });
 });

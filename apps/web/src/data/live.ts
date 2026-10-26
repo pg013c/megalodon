@@ -10,7 +10,7 @@ export function staleKeys(type: string): readonly (readonly string[])[] {
   if (type.startsWith('project.') || type.startsWith('workspace.')) return [keys.projects, keys.workspace];
   if (type.startsWith('task.') || type.startsWith('story.')) return [workKeys.all, workKeys.tasks];
   if (type === 'step.message') return [];
-  if (type.startsWith('run.') || type.startsWith('step.')) return [runKeys.all];
+  if (type.startsWith('run.') || type.startsWith('step.') || type.startsWith('decision.')) return [runKeys.all];
   return [];
 }
 

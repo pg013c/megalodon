@@ -127,4 +127,64 @@ export const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: 5,
+    name: 'pipelines, step attempts and decisions',
+    sql: `
+      ALTER TABLE runs ADD COLUMN pipeline_id TEXT NOT NULL DEFAULT '';
+      ALTER TABLE runs ADD COLUMN pipeline_version TEXT NOT NULL DEFAULT '';
+      UPDATE runs SET pipeline_id = 'agent:' || agent_id, pipeline_version = 'unknown';
+      ALTER TABLE runs DROP COLUMN agent_id;
+      CREATE TABLE run_steps_v5 (
+        run_id TEXT NOT NULL REFERENCES runs (id),
+        step_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        idx INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        agent_id TEXT,
+        agent_version TEXT,
+        status TEXT NOT NULL,
+        session_id TEXT,
+        started_at TEXT NOT NULL,
+        started_seq INTEGER NOT NULL,
+        ended_at TEXT,
+        duration_ms INTEGER,
+        num_turns INTEGER,
+        result TEXT,
+        error TEXT,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (run_id, step_id, attempt)
+      );
+      INSERT INTO run_steps_v5
+        SELECT run_id, step_id, 1, idx, kind, name, agent_id, agent_version, status, session_id, started_at, idx,
+          ended_at, duration_ms, num_turns, result, error, cost_usd, input_tokens, output_tokens, cache_read_tokens,
+          cache_write_tokens
+        FROM run_steps;
+      DROP TABLE run_steps;
+      ALTER TABLE run_steps_v5 RENAME TO run_steps;
+      CREATE TABLE decisions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        run_id TEXT,
+        step_id TEXT,
+        kind TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        rationale TEXT NOT NULL,
+        alternatives TEXT NOT NULL,
+        inputs TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        at TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        superseded_by TEXT,
+        overrides TEXT
+      );
+      CREATE INDEX decisions_by_task ON decisions (task_id, seq);
+      CREATE INDEX decisions_by_run ON decisions (run_id, seq);
+    `,
+  },
 ];
