@@ -29,6 +29,12 @@ export const url = (path: string) => `http://127.0.0.1:${PORT}${path}`;
 
 const builtinLibrary = fileURLToPath(new URL('../../../../library', import.meta.url));
 
+/** The identity vitest.config.ts sets, for commits that run the project's hooks with the agents' environment. */
+const gitIdentity = () =>
+  Object.fromEntries(
+    ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL'].flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : [])),
+  );
+
 /** The real store, projections, services and app over a database in `dir`; agents are scripted. */
 export function createTestServer(dir: string, runtime: AgentRuntime = new ScriptedRuntime(), options: { autoTriage?: boolean; now?: () => Date; release?: string | null } = {}) {
   const db = openDatabase(join(dir, 'test.db'));
@@ -48,7 +54,7 @@ export function createTestServer(dir: string, runtime: AgentRuntime = new Script
     library,
     runtime,
     dataDir: dir,
-    env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
+    env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ...gitIdentity() },
   });
   const triage = new TriageService({
     store,

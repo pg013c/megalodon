@@ -189,7 +189,7 @@ Connectors behind one interface: `status()` (connected / needs login), and capab
 
 ## 13. Project settings and knowledge
 
-- **Settings** (checks, worktree setup, sensitive paths, gate policies, knowledge path) live in
+- **Settings** (checks, worktree setup, sensitive paths, gate policies, commit conventions, knowledge path) live in
   Megalodon's database, detected on connect and edited in the UI; nothing is written to the
   project (ADR-0015).
 - **Knowledge base**: files committed to the project, by default `docs/`, updated by agents through

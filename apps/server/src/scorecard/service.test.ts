@@ -106,6 +106,17 @@ describe('ScorecardService: agents', () => {
     expect(pipeline(card, 'feature')).toMatchObject({ name: 'Feature', runs: 1, finished: 1, merged: 0, avgAttempts: 3 });
   });
 
+  it('credits review scores to the implementer under Conventional Commits too', async () => {
+    const server = await setup({
+      implementer: (input) => ({ files: { [fileOf(input)]: 'hi\n' }, output: { summary: 's', commit: { subject: 'feat: a', body: '', trailers: [] } } }),
+    });
+    const settings = server.projects.get(server.project.id).settings;
+    await server.projects.updateSettings(server.project.id, { ...settings, commits: { ...settings.commits, style: 'conventional' } });
+    await server.run('a');
+
+    expect(agent(server.scorecard.view('30d', null), 'implementer')).toMatchObject({ reviewed: 1, reviewScore: 8 });
+  });
+
   it('counts failed attempts and leaves stopped ones out', async () => {
     const server = await setup({
       implementer: (input, call) => (call === 1 ? { files: { [fileOf(input)]: 'hi\n' } } : call === 2 ? { ok: false, error: 'error_max_turns' } : { hang: true }),

@@ -1,4 +1,4 @@
-import { defaultPolicies, type ProjectSettings } from '@megalodon/contracts';
+import { defaultCommits, defaultPolicies, type ProjectSettings } from '@megalodon/contracts';
 import { describe, expect, it } from 'vitest';
 import { fromForm, toForm } from './settingsForm';
 
@@ -12,6 +12,7 @@ const settings: ProjectSettings = {
   knowledge: { location: 'repo', path: 'docs' },
   maxParallel: null,
   policies: defaultPolicies,
+  commits: defaultCommits,
 };
 
 describe('settings form', () => {
@@ -26,5 +27,12 @@ describe('settings form', () => {
     const result = fromForm(form, 'pnpm');
     expect(result.checks).toHaveLength(1);
     expect(result.sensitivePaths).toEqual(['src/auth/**']);
+  });
+
+  it('round-trips commit conventions, trailers one per line', () => {
+    const form = toForm({ ...settings, commits: { style: 'conventional', trailers: ['Refs: #1'], hooks: true } });
+    expect(form.commits).toEqual({ style: 'conventional', trailers: 'Refs: #1', hooks: true });
+    form.commits.trailers = 'Refs: #1\n\n  Signed-off-by: A <a@x>  \n';
+    expect(fromForm(form, 'pnpm').commits).toEqual({ style: 'conventional', trailers: ['Refs: #1', 'Signed-off-by: A <a@x>'], hooks: true });
   });
 });

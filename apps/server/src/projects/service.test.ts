@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { defaultPolicies, projectEvents } from '@megalodon/contracts';
+import { defaultCommits, defaultPolicies, projectEvents } from '@megalodon/contracts';
 import { describe, expect, it } from 'vitest';
 import { initRepo, sh } from '../test/repo';
 import { createTestServer } from '../test/server';
@@ -34,6 +34,7 @@ describe('ProjectService', () => {
       knowledge: { location: 'repo', path: 'docs' },
       maxParallel: null,
       policies: defaultPolicies,
+      commits: defaultCommits,
     });
     expect(projects.activeProjectId()).toBe(project.id);
   });

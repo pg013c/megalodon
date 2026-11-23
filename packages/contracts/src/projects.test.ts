@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultPolicies, knowledgeSchema, projectSettingsSchema, type ProjectSettings } from './projects';
+import { commitsSchema, defaultCommits, defaultPolicies, knowledgeSchema, projectSettingsSchema, type ProjectSettings } from './projects';
 
 const settings: ProjectSettings = {
   baseBranch: 'main',
@@ -11,6 +11,7 @@ const settings: ProjectSettings = {
   knowledge: { location: 'repo', path: 'docs' },
   maxParallel: null,
   policies: defaultPolicies,
+  commits: defaultCommits,
 };
 
 describe('projectSettingsSchema', () => {
@@ -32,6 +33,17 @@ describe('projectSettingsSchema', () => {
       conflicts: { mode: 'auto', attempts: 2 },
       push: { mode: 'operator', remote: 'origin' },
     });
+  });
+
+  it('keeps Megalodon commits for settings stored before commit conventions existed', () => {
+    const { commits: _, ...older } = settings;
+    expect(projectSettingsSchema.parse(older).commits).toEqual({ style: 'megalodon', trailers: [], hooks: false });
+  });
+
+  it('accepts trailers as `Token: value` only', () => {
+    expect(commitsSchema.safeParse({ style: 'conventional', trailers: ['Signed-off-by: A <a@x>', ' Refs: #1 '], hooks: true }).success).toBe(true);
+    expect(commitsSchema.safeParse({ style: 'conventional', trailers: ['no colon'], hooks: false }).success).toBe(false);
+    expect(commitsSchema.safeParse({ style: 'conventional', trailers: ['Refs:#1'], hooks: false }).success).toBe(false);
   });
 
   it('keeps the knowledge base inside the project', () => {

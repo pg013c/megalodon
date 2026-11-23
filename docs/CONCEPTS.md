@@ -136,3 +136,19 @@ Every decision carries: actor (agent + version, policy, or operator), subject (t
 inputs, rationale, alternatives considered, and resulting events. An override is a new decision
 that supersedes an earlier one; Megalodon then recomputes what depends on it (e.g. a removed
 dependency makes a task `ready`).
+
+## 8. Commits
+
+Megalodon commits a run's work after every agent step that changed files; agents never commit
+themselves. Each project chooses how (ADR-0033):
+
+| Setting | `megalodon` (default) | `conventional` |
+|---|---|---|
+| Step commit subject | `#N <title>`; on a retry `#N <step>: fixes (attempt k)` | The implementer's `type(scope): summary`; `chore: #N <title>` when it gives none or an invalid one |
+| Step commit body | The agent's reply | The implementer's commit body; never the chat reply |
+| Merge commits | `Merge #N <title>`, `Merge <base> into <branch>` | `merge: #N <title>`, `merge: <base> into <branch>` |
+
+- **Trailers** (`Token: value`) are appended to every step commit, after the agent's own.
+- **Hooks**: off by default (`--no-verify`). When on, the project's git hooks run on step commits;
+  a failing hook fails the step and sends the work back to the agent with the hook's output, up to
+  the project's fix passes, like failing checks.

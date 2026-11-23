@@ -20,6 +20,7 @@ import type { EventStore } from '../events/store';
 import type { Library } from '../library/library';
 import type { ProjectsQueries } from '../projects/projection';
 import { runCommand } from '../runs/command';
+import { mergeSubject } from '../runs/commits';
 import { removeWorktree, worktreeExists } from '../runs/git';
 import type { RunsQueries } from '../runs/projection';
 import type { AgentRuntime } from '../runtime/types';
@@ -216,7 +217,7 @@ export class MergeService {
     if (!(await isAncestor(project.path, base, tip))) {
       const predicted = await predictConflicts(project.path, base, tip);
       this.event(task, mergeEvents.updated, { runId: run.id, conflicts: predicted });
-      const conflicts = await merge(run.worktreePath, base, `Merge ${project.settings.baseBranch} into ${run.branch}`);
+      const conflicts = await merge(run.worktreePath, base, mergeSubject(project.settings.commits.style, `${project.settings.baseBranch} into ${run.branch}`));
       if (conflicts.length) {
         const resolved = await this.resolve(task, project, run, conflicts);
         if (!resolved.ok) {
@@ -234,7 +235,7 @@ export class MergeService {
       this.setBlock(project, problem);
       return { ok: false, reason: 'blocked' };
     }
-    const conflicts = await merge(project.path, `refs/heads/${run.branch}`, `Merge #${task.number} ${task.title}`);
+    const conflicts = await merge(project.path, `refs/heads/${run.branch}`, mergeSubject(project.settings.commits.style, `#${task.number} ${task.title}`));
     if (conflicts.length) {
       await abortMerge(project.path);
       return { ok: false, reason: `Unexpected conflicts in your checkout: ${conflicts.join(', ')}` };
