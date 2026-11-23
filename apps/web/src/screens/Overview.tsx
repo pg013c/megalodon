@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router';
 import { useOverview } from '../data/overview';
 import { useActiveProject, useProjects, useSetActiveProject } from '../data/projects';
 import { cost, duration, timeAgo } from '../lib/format';
+import { periods } from '../lib/periods';
 import { statusLabel } from '../lib/status';
 import { useUiState } from '../shell/UiState';
 import { Button } from '../ui/Button';
@@ -12,13 +13,6 @@ import { ErrorText } from '../ui/Field';
 import { Segmented } from '../ui/Segmented';
 import { StatusDot } from '../ui/StatusBadge';
 import { QueuePanel } from './QueuePanel';
-
-const periods = [
-  { value: '24h', label: '24 h' },
-  { value: '7d', label: '7 days' },
-  { value: '30d', label: '30 days' },
-  { value: 'all', label: 'All' },
-] as const;
 
 const needsLabel: Record<NeedsYouKind, string> = {
   plan: 'plans to approve',

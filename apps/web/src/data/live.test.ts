@@ -9,11 +9,11 @@ describe('staleKeys', () => {
     expect(staleKeys('story.created')).toEqual([['work'], ['task'], ['queue'], ['needs-you'], ['overview']]);
     expect(staleKeys('dependency.added')).toEqual([['work'], ['task'], ['queue'], ['needs-you'], ['overview']]);
     expect(staleKeys('scheduler.paused')).toEqual([['queue'], ['needs-you'], ['overview']]);
-    expect(staleKeys('merge.blocked')).toEqual([['work'], ['task'], ['queue'], ['needs-you'], ['overview']]);
-    expect(staleKeys('run.started')).toEqual([['runs'], ['queue'], ['needs-you'], ['overview']]);
-    expect(staleKeys('step.completed')).toEqual([['runs'], ['overview']]);
+    expect(staleKeys('merge.blocked')).toEqual([['work'], ['task'], ['queue'], ['needs-you'], ['overview'], ['scorecard']]);
+    expect(staleKeys('run.started')).toEqual([['runs'], ['queue'], ['needs-you'], ['overview'], ['scorecard']]);
+    expect(staleKeys('step.completed')).toEqual([['runs'], ['overview'], ['scorecard']]);
     expect(staleKeys('step.message')).toEqual([]);
-    expect(staleKeys('decision.made')).toEqual([['runs'], ['needs-you'], ['overview']]);
+    expect(staleKeys('decision.made')).toEqual([['runs'], ['needs-you'], ['overview'], ['scorecard']]);
     expect(staleKeys('chat.message')).toEqual([['chat']]);
     expect(staleKeys('other.thing')).toEqual([]);
   });

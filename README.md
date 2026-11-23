@@ -37,6 +37,9 @@ what waits for you, can read every decision an agent made, and can overturn any 
 - **Event log as the source of truth.** Every state change is an append-only event in SQLite;
   statuses, the graph, timelines and costs are projections rebuilt from it. Every agent decision is
   stored with its rationale and can be overridden (ADR-0003, ADR-0025).
+- **Agent and pipeline scorecard.** Success rate, rework, review score, cost, time and overrides
+  per agent and pipeline version, so a prompt change can be compared with the version before it,
+  with the runs behind every number (ADR-0032, ADR-0033).
 - **Chat and an MCP server.** A built-in assistant can read and change Megalodon, and other
   clients (Claude Code, Claude Desktop) can use it over MCP at `/mcp` (ADR-0030).
 
@@ -45,6 +48,8 @@ what waits for you, can read every decision an agent made, and can overturn any 
 | ![Task screen](docs/screenshots/task.png) | ![Agents and pipelines](docs/screenshots/library.png) |
 
 ![Backlog of stories](docs/screenshots/backlog.png)
+
+![Scorecard of agent and pipeline versions](docs/screenshots/scorecard.png)
 
 ## How it works
 

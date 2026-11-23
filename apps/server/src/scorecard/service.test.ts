@@ -4,6 +4,7 @@ import {
   defaultPolicies,
   mergeEvents,
   runEvents,
+  scorecardRunsSchema,
   scorecardSchema,
   taskStream,
   type AgentScore,
@@ -379,6 +380,85 @@ describe('GET /api/scorecard', () => {
     expect(apiErrorSchema.parse(await period.json()).error).toMatchObject({ code: 'INVALID_REQUEST', message: 'period must be one of 24h, 7d, 30d, all' });
 
     const project = await app.request(url('/api/scorecard?projectId=nope'));
+    expect(project.status).toBe(404);
+    expect(apiErrorSchema.parse(await project.json()).error.code).toBe('PROJECT_NOT_FOUND');
+  });
+});
+
+describe('GET /api/scorecard/runs', () => {
+  const runsOf = async (app: { request: (u: string) => Response | Promise<Response> }, query: Record<string, string>) => {
+    const res = await app.request(url(`/api/scorecard/runs?${new URLSearchParams(query).toString()}`));
+    expect(res.status).toBe(200);
+    return scorecardRunsSchema.parse(await res.json());
+  };
+
+  it('lists the runs behind an agent version, matching its row', async () => {
+    const server = await setup();
+    const first = await server.run('a');
+    const second = await server.run('b');
+    const card = server.scorecard.view('30d', null);
+    const implementer = agent(card, 'implementer');
+
+    const list = await runsOf(server.app, { agentId: 'implementer', agentVersion: implementer.agentVersion });
+    expect(list.total).toBe(implementer.runs);
+    expect(list.runs).toHaveLength(implementer.runs);
+    expect(list.runs.map((r) => [r.runId, r.taskNumber, r.taskTitle])).toEqual([
+      [second.run.id, second.task.number, 'b'],
+      [first.run.id, first.task.number, 'a'],
+    ]);
+    expect(list.runs[0]).toMatchObject({ taskId: second.task.id, projectId: server.project.id, projectName: server.project.name, status: 'succeeded', attempts: 1, rework: 0, reviewScore: 8 });
+    expect(list.runs.reduce((sum, r) => sum + r.costUsd, 0)).toBeCloseTo(implementer.costUsd, 6);
+  });
+
+  it('lists the runs behind a pipeline version, matching its row', async () => {
+    const server = await setup();
+    await server.run('a');
+    await server.run('b');
+    await server.run('c', { agentId: 'implementer' });
+    const feature = pipeline(server.scorecard.view('30d', null), 'feature');
+
+    const list = await runsOf(server.app, { pipelineId: 'feature', pipelineVersion: feature.pipelineVersion });
+    expect(list.total).toBe(feature.runs);
+    expect(list.runs.map((r) => r.taskTitle)).toEqual(['b', 'a']);
+    expect(list.runs.reduce((sum, r) => sum + r.costUsd, 0)).toBeCloseTo(feature.costUsd, 6);
+    expect(list.runs[0]).toMatchObject({ attempts: 1, rework: 0, reviewScore: null, merged: false });
+
+    // a pipeline id with a colon goes through the query string
+    const single = pipeline(server.scorecard.view('30d', null), 'agent:implementer');
+    expect((await runsOf(server.app, { pipelineId: 'agent:implementer', pipelineVersion: single.pipelineVersion })).runs.map((r) => r.taskTitle)).toEqual(['c']);
+  });
+
+  it('narrows by project and period', async () => {
+    let now = new Date();
+    const server = await setup({}, { now: () => now });
+    await server.run('a');
+    const other = await server.projects.connect(initRepo(join(tempDir(), 'blog')));
+    await server.run('b', { agentId: 'implementer' }, other.id);
+    const version = server.library.agent('implementer').version;
+
+    expect((await runsOf(server.app, { agentId: 'implementer', agentVersion: version })).runs.map((r) => r.taskTitle)).toEqual(['b', 'a']);
+    const mine = await runsOf(server.app, { agentId: 'implementer', agentVersion: version, projectId: server.project.id, period: '24h' });
+    expect(mine).toMatchObject({ total: 1, runs: [{ taskTitle: 'a', projectId: server.project.id }] });
+
+    now = new Date(Date.now() + 2 * 86_400_000);
+    const target = { kind: 'agent', id: 'implementer', version } as const;
+    expect(server.scorecard.runs(target, '24h', null)).toEqual({ total: 0, runs: [] });
+    expect(server.scorecard.runs(target, '7d', null).total).toBe(2);
+    expect(server.scorecard.runs(target, '7d', other.id).runs.map((r) => r.taskTitle)).toEqual(['b']);
+  });
+
+  it('refuses a missing target, an unknown period or project', async () => {
+    const { app } = await setup();
+    for (const query of ['', 'agentId=implementer', 'agentId=implementer&pipelineVersion=v', 'agentId=a&agentVersion=v&pipelineId=p&pipelineVersion=v']) {
+      const res = await app.request(url(`/api/scorecard/runs?${query}`));
+      expect(res.status).toBe(400);
+      expect(apiErrorSchema.parse(await res.json()).error).toMatchObject({ code: 'INVALID_REQUEST', message: 'give agentId and agentVersion, or pipelineId and pipelineVersion' });
+    }
+    const period = await app.request(url('/api/scorecard/runs?agentId=a&agentVersion=v&period=1y'));
+    expect(period.status).toBe(400);
+    expect(apiErrorSchema.parse(await period.json()).error.message).toBe('period must be one of 24h, 7d, 30d, all');
+
+    const project = await app.request(url('/api/scorecard/runs?agentId=a&agentVersion=v&projectId=nope'));
     expect(project.status).toBe(404);
     expect(apiErrorSchema.parse(await project.json()).error.code).toBe('PROJECT_NOT_FOUND');
   });

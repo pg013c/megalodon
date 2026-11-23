@@ -7,6 +7,7 @@ import { overviewKeys } from './overview';
 import { keys } from './projects';
 import { queueKeys } from './queue';
 import { runKeys } from './runs';
+import { scorecardKeys } from './scorecard';
 import { workKeys } from './work';
 
 /** Query keys that an event type makes stale. Transcript messages update views directly instead. */
@@ -16,12 +17,12 @@ export function staleKeys(type: string): readonly (readonly string[])[] {
     return [workKeys.all, workKeys.tasks, queueKeys.queue, needsYouKeys.all, overviewKeys.all];
   }
   if (type.startsWith('scheduler.')) return [queueKeys.queue, needsYouKeys.all, overviewKeys.all];
-  if (type.startsWith('merge.')) return [workKeys.all, workKeys.tasks, queueKeys.queue, needsYouKeys.all, overviewKeys.all];
+  if (type.startsWith('merge.')) return [workKeys.all, workKeys.tasks, queueKeys.queue, needsYouKeys.all, overviewKeys.all, scorecardKeys.all];
   if (type.startsWith('chat.')) return [chatKeys.all];
   if (type === 'step.message') return [];
-  if (type.startsWith('run.')) return [runKeys.all, queueKeys.queue, needsYouKeys.all, overviewKeys.all];
-  if (type.startsWith('decision.')) return [runKeys.all, needsYouKeys.all, overviewKeys.all];
-  if (type.startsWith('step.')) return [runKeys.all, overviewKeys.all];
+  if (type.startsWith('run.')) return [runKeys.all, queueKeys.queue, needsYouKeys.all, overviewKeys.all, scorecardKeys.all];
+  if (type.startsWith('decision.')) return [runKeys.all, needsYouKeys.all, overviewKeys.all, scorecardKeys.all];
+  if (type.startsWith('step.')) return [runKeys.all, overviewKeys.all, scorecardKeys.all];
   return [];
 }
 

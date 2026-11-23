@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cost, duration, linesToList, listToLines, patchLineKind, timeAgo, tokens, versionLabel } from './format';
+import { cost, duration, linesToList, listToLines, patchLineKind, percent, score, timeAgo, tokens, versionLabel } from './format';
 
 describe('timeAgo', () => {
   const now = Date.parse('2026-10-26T12:00:00Z');
@@ -40,6 +40,16 @@ describe('run numbers', () => {
     expect(tokens(12_345)).toBe('12k');
     expect(tokens(1_234)).toBe('1.2k');
     expect(tokens(1_234_567)).toBe('1.2M');
+  });
+
+  it('formats rates and review scores, with — for none', () => {
+    expect(percent(null)).toBe('—');
+    expect(percent(0)).toBe('0%');
+    expect(percent(0.857)).toBe('86%');
+    expect(percent(1)).toBe('100%');
+    expect(score(null)).toBe('—');
+    expect(score(8)).toBe('8.0');
+    expect(score(6.25)).toBe('6.3');
   });
 });
 
