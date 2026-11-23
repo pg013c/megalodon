@@ -12,6 +12,7 @@ const settings: ProjectSettings = {
   maxParallel: null,
   policies: defaultPolicies,
   commits: defaultCommits,
+  testPaths: ['**/tests/**'],
 };
 
 describe('projectSettingsSchema', () => {
@@ -38,6 +39,11 @@ describe('projectSettingsSchema', () => {
   it('keeps Megalodon commits for settings stored before commit conventions existed', () => {
     const { commits: _, ...older } = settings;
     expect(projectSettingsSchema.parse(older).commits).toEqual({ style: 'megalodon', trailers: [], hooks: false });
+  });
+
+  it('has no test paths for settings stored before the test-first pipeline existed', () => {
+    const { testPaths: _, ...older } = settings;
+    expect(projectSettingsSchema.parse(older).testPaths).toEqual([]);
   });
 
   it('accepts trailers as `Token: value` only', () => {

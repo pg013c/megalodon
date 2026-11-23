@@ -92,6 +92,11 @@ steps:
     onFail: { retry: implement, max: 1 }
 ```
 
+Step options (ADR-0034): a check step may run `only: [names]` of the project's checks and
+`expect: fail`, passing only when they fail; an agent step may set `tests: only | locked`, which
+guards its changes against the project's `testPaths`, and `commitTypes`, the Conventional Commits
+types its commit may have. The built-in `test-first` pipeline uses them for red and green steps.
+
 Each run records the content hash of every agent and pipeline it used; evaluation groups by these
 versions (the scorecard, ADR-0032), shown on Agents & Pipelines → Scorecard with the runs behind
 each row (`GET /api/scorecard/runs`, ADR-0033).

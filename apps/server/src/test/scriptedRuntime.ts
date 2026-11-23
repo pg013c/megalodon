@@ -3,10 +3,13 @@ import { join } from 'node:path';
 import { zeroUsage } from '@megalodon/contracts';
 import { isLimit } from '../runtime/claude';
 import type { AgentRunInput, AgentRuntime, RuntimeEvent } from '../runtime/types';
+import { sh } from './repo';
 
 export interface Script {
   /** Files the "agent" writes into its worktree. */
   files?: Record<string, string>;
+  /** Commit everything with this message itself, as an agent that ignores its instructions would. */
+  commit?: string;
   /** Structured answer for agents with an output contract. */
   output?: unknown;
   ok?: boolean;
@@ -30,6 +33,10 @@ export class ScriptedRuntime implements AgentRuntime {
       yield { type: 'message', message: { kind: 'tool_use', toolUseId: path, name: 'Write', input: JSON.stringify({ path }) } };
       writeFileSync(join(input.cwd, path), content);
       yield { type: 'message', message: { kind: 'tool_result', toolUseId: path, isError: false, content: 'ok' } };
+    }
+    if (script.commit) {
+      sh(input.cwd, 'add', '-A');
+      sh(input.cwd, 'commit', '-q', '--no-verify', '-m', script.commit);
     }
     if (script.hang) {
       if (!input.signal.aborted) {

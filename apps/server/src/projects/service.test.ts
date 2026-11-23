@@ -35,6 +35,7 @@ describe('ProjectService', () => {
       maxParallel: null,
       policies: defaultPolicies,
       commits: defaultCommits,
+      testPaths: [],
     });
     expect(projects.activeProjectId()).toBe(project.id);
   });

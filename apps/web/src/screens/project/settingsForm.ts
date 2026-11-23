@@ -15,6 +15,7 @@ export interface SettingsForm {
   policies: Policies;
   /** Trailers as multi-line text. */
   commits: { style: CommitSettings['style']; trailers: string; hooks: boolean };
+  testPaths: string;
 }
 
 export function toForm(s: ProjectSettings): SettingsForm {
@@ -29,6 +30,7 @@ export function toForm(s: ProjectSettings): SettingsForm {
     maxParallel: s.maxParallel === null ? '' : String(s.maxParallel),
     policies: s.policies,
     commits: { style: s.commits.style, trailers: listToLines(s.commits.trailers), hooks: s.commits.hooks },
+    testPaths: listToLines(s.testPaths),
   };
 }
 
@@ -47,5 +49,6 @@ export function fromForm(form: SettingsForm, packageManager: ProjectSettings['pa
     maxParallel: form.maxParallel.trim() === '' ? null : Number(form.maxParallel),
     policies: form.policies,
     commits: { style: form.commits.style, trailers: linesToList(form.commits.trailers), hooks: form.commits.hooks },
+    testPaths: linesToList(form.testPaths),
   };
 }

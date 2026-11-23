@@ -29,6 +29,7 @@ export function detectSettings(root: string, baseBranch: string): ProjectSetting
     maxParallel: null,
     policies: defaultPolicies,
     commits: defaultCommits,
+    testPaths: [],
   };
 }
 

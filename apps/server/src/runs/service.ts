@@ -10,6 +10,7 @@ import {
   zeroUsage,
   type Actor,
   type Agent,
+  type Check,
   type CommitOutput,
   type NewEvent,
   type OutputContract,
@@ -32,14 +33,26 @@ import type { Library } from '../library/library';
 import type { ProjectsQueries } from '../projects/projection';
 import type { AgentRuntime } from '../runtime/types';
 import type { WorkService } from '../work/service';
-import { runCommand } from './command';
+import { runCommand, type CommandResult } from './command';
 import { runCommitMessage } from './commits';
 import { changedFiles, globToRegExp } from '../merge/git';
 import { touchesOverlap } from '../work/readiness';
-import { addWorktree, branchDiff, commitAll, head, revParse, taskBranch, worktreeExists } from './git';
+import { addWorktree, branchDiff, commitAll, head, revParse, stepChanges, taskBranch, treeSnapshot, worktreeExists } from './git';
 import { buildPlan, runPosition, type RunPosition } from './plan';
 import type { RunsQueries } from './projection';
-import { commitInstructions, fixPrompt, implementationPrompt, planningPrompt, resumePrompt, reviewFeedback, reviewPrompt, taskPrompt } from './prompts';
+import {
+  commitInstructions,
+  commitTypeInstructions,
+  fixPrompt,
+  implementationPrompt,
+  planningPrompt,
+  resumePrompt,
+  reviewFeedback,
+  reviewPrompt,
+  taskPrompt,
+  testStepInstructions,
+} from './prompts';
+import { testPathViolations } from './testPaths';
 
 const OPERATOR: Actor = { kind: 'operator' };
 const SYSTEM: Actor = { kind: 'system' };
@@ -358,11 +371,14 @@ export class RunService {
     return { kind: 'passed' };
   }
 
-  /** Runs the project's checks; required ones decide. Megalodon runs them, not an agent (ADR-0015). */
+  /**
+   * Runs the project's checks; required ones decide. Megalodon runs them, not an agent (ADR-0015).
+   * With `expect: fail` the required checks must fail instead, e.g. new tests before the code (ADR-0034).
+   */
   private async checkStep(run: Run, step: Extract<PlannedStep, { kind: 'check' }>, attempt: number, index: number, active: Active): Promise<StepOutcome> {
     this.stepStarted(run.id, step.stepId, attempt, index, 'check', step.name, null, null);
     const started = Date.now();
-    const failures: string[] = [];
+    const wrong: CheckVerdict[] = [];
     const lines: string[] = [];
     for (const check of step.checks) {
       const result = await this.command(run, step.stepId, check.command, check.timeoutSec * 1000, active);
@@ -372,21 +388,22 @@ export class RunService {
         }
         return { kind: 'stopped' };
       }
-      const passed = result.exitCode === 0;
-      const why = passed ? 'passed' : result.timedOut ? `timed out after ${check.timeoutSec}s` : `failed (exit code ${result.exitCode})`;
-      this.message(run.id, step.stepId, attempt, { kind: 'output', text: `$ ${check.command}  — ${why}\n${result.tail}` });
-      lines.push(`- ${check.name}: ${why}${check.required ? '' : ' (optional)'}`);
-      if (!passed && check.required) failures.push(`${check.name} (\`${check.command}\`) ${why}:\n${result.tail.slice(-3_000)}`);
+      const verdict = checkVerdict(check, result, step.expect);
+      this.message(run.id, step.stepId, attempt, { kind: 'output', text: `$ ${check.command}  — ${verdict.why}\n${result.tail}` });
+      lines.push(`- ${check.name}: ${verdict.why}${check.required ? '' : ' (optional)'}`);
+      if (!verdict.ok && check.required) wrong.push(verdict);
     }
     const report = lines.join('\n') || '- (no checks configured)';
-    const done = completed(run.id, step.stepId, attempt, failures.length ? 'failed' : 'succeeded', zeroUsage, Date.now() - started, null, report, failures.length ? `${failures.length} required ${failures.length === 1 ? 'check' : 'checks'} failed` : null);
-    if (!failures.length) {
+    const error = wrong.length ? checkError(step.expect, wrong) : null;
+    const done = completed(run.id, step.stepId, attempt, error ? 'failed' : 'succeeded', zeroUsage, Date.now() - started, null, report, error);
+    if (!error) {
       this.append(run.id, runEvents.stepCompleted, done);
       return { kind: 'passed' };
     }
+    const details = wrong.map((v) => `${v.check.name} (\`${v.check.command}\`) ${v.why}:\n${v.tail.slice(-3_000)}`).join('\n\n');
     return {
       kind: 'rejected',
-      feedback: `The project's checks failed:\n\n${failures.join('\n\n')}`,
+      feedback: `${checkFeedback(step.expect, wrong)}\n\n${details}`,
       events: [{ type: runEvents.stepCompleted, stream: runStream(run.id), data: done, actor: SYSTEM }],
     };
   }
@@ -404,7 +421,12 @@ export class RunService {
     const agent = this.deps.library.agent(step.agentId);
     // under Conventional Commits an agent without its own contract answers with its commit message (ADR-0033)
     const contract: OutputContract | undefined = agent.output ?? (project.settings.commits.style === 'conventional' ? 'commit' : undefined);
-    if (!resumeSessionId) this.stepStarted(run.id, step.stepId, attempt, position.index, 'agent', step.name, agent.id, agent.version);
+    // the test-path guard measures changes against the worktree as the step found it, pinned across a
+    // restart and the step's own retries, so a commit the agent makes itself cannot move it (ADR-0034)
+    const stepBase = !step.tests
+      ? null
+      : ((resumeSessionId ? position.bases.get(step.stepId) : position.retryBase) ?? (await treeSnapshot(run.worktreePath)));
+    if (!resumeSessionId) this.stepStarted(run.id, step.stepId, attempt, position.index, 'agent', step.name, agent.id, agent.version, stepBase);
     const { prompt, session } = resumeSessionId
       ? { prompt: resumePrompt, session: resumeSessionId }
       : await this.agentPrompt(run, step, agent, contract, position, task, project);
@@ -445,6 +467,27 @@ export class RunService {
       }
       // the commit message lives in git, not in the step's output: that stays the agent contract's (ADR-0032, ADR-0033)
       const result = event.result?.trim() ? event.result : (commit?.summary ?? event.result);
+
+      // the test-path guard runs before the commit, so a retry starts from the same base (ADR-0034)
+      if (step.tests && stepBase) {
+        const violations = testPathViolations(await stepChanges(run.worktreePath, stepBase), step.testPaths, step.tests);
+        if (violations.length) {
+          const list = violations.slice(0, 5).join(', ') + (violations.length > 5 ? ', …' : '');
+          const error = step.tests === 'locked' ? `Changed locked test files: ${list}` : `Changed files outside the test paths: ${list}`;
+          const failed: NewEvent = {
+            type: runEvents.stepCompleted,
+            stream: runStream(run.id),
+            data: completed(run.id, step.stepId, attempt, 'failed', event.usage, event.durationMs, event.numTurns, result, error),
+            actor: SYSTEM,
+          };
+          return {
+            kind: 'rejected',
+            feedback: testPathFeedback(step.tests, violations, step.testPaths, stepBase),
+            events: [failed],
+            rule: { retry: step.stepId, max: project.settings.maxFixPasses },
+          };
+        }
+      }
 
       try {
         const message = runCommitMessage(project.settings.commits, task, step, attempt, event.result ?? '', commit?.commit ?? null);
@@ -582,10 +625,12 @@ export class RunService {
       return { prompt: reviewPrompt(base, plan, await branchDiff(run.worktreePath, run.baseSha), checks), session: null };
     }
     // a retry continues the agent's previous session with the reason, when there is one
-    const commit = contract === 'commit' ? `\n\n${commitInstructions}` : '';
+    const types = step.commitTypes?.length ? `\n${commitTypeInstructions(step.commitTypes)}` : '';
+    const commit = contract === 'commit' ? `\n\n${commitInstructions}${types}` : '';
     const previous = position.sessions.get(step.stepId) ?? null;
     if (position.feedback && previous) return { prompt: `${fixPrompt(position.feedback)}${commit}`, session: previous };
-    const prompt = implementationPrompt(base, plan);
+    const tests = step.tests ? `\n\n${testStepInstructions(step.tests, step.testPaths)}` : '';
+    const prompt = `${implementationPrompt(base, plan)}${tests}`;
     return { prompt: `${position.feedback ? `${prompt}\n\n${fixPrompt(position.feedback)}` : prompt}${commit}`, session: null };
   }
 
@@ -614,8 +659,18 @@ export class RunService {
     else this.deps.work.transition(task.id, 'failed', ending.error, SYSTEM);
   }
 
-  private stepStarted(runId: string, stepId: string, attempt: number, index: number, kind: 'command' | 'agent' | 'check', name: string, agentId: string | null, agentVersion: string | null) {
-    this.append(runId, runEvents.stepStarted, { runId, stepId, attempt, index, kind, name, agentId, agentVersion });
+  private stepStarted(
+    runId: string,
+    stepId: string,
+    attempt: number,
+    index: number,
+    kind: 'command' | 'agent' | 'check',
+    name: string,
+    agentId: string | null,
+    agentVersion: string | null,
+    base: string | null = null,
+  ) {
+    this.append(runId, runEvents.stepStarted, { runId, stepId, attempt, index, kind, name, agentId, agentVersion, ...(base ? { base } : {}) });
   }
 
   private message(runId: string, stepId: string, attempt: number, message: RunMessage) {
@@ -674,6 +729,52 @@ function completed(
   error: string | null,
 ) {
   return { runId, stepId, attempt, status, usage, durationMs: Math.round(durationMs), numTurns, result, error };
+}
+
+/** What the agent gets back when its step changed files the test-path guard forbids. */
+function testPathFeedback(mode: 'only' | 'locked', files: string[], globs: string[], base: string): string {
+  const list = files.map((f) => `- ${f}`).join('\n');
+  const patterns = globs.map((g) => `\`${g}\``).join(', ');
+  const restore = `Restore them to how they were when this step started with \`git checkout ${base} -- <path>\` (this also undoes changes you committed), and delete the files you added.`;
+  return mode === 'locked'
+    ? `This step changed test files, which are locked (they match ${patterns}):\n${list}\n\n${restore} Make the tests pass by changing the code only.`
+    : `This step writes tests only, but it changed files outside the test paths (${patterns}):\n${list}\n\n${restore} Keep only the tests; a later step writes the code.`;
+}
+
+/** How one check ended, judged against what its step expects. */
+interface CheckVerdict {
+  check: Check;
+  ok: boolean;
+  /** `failed` is a non-zero exit; a timeout or a signal is neither a pass nor a failure of the tests. */
+  outcome: 'passed' | 'failed' | 'timed_out' | 'killed';
+  why: string;
+  tail: string;
+}
+
+function checkVerdict(check: Check, result: CommandResult, expect: 'pass' | 'fail'): CheckVerdict {
+  const outcome = result.exitCode === 0 ? 'passed' : result.timedOut ? 'timed_out' : result.exitCode === null ? 'killed' : 'failed';
+  const why = {
+    passed: expect === 'pass' ? 'passed' : 'passed (expected to fail)',
+    failed: expect === 'pass' ? `failed (exit code ${result.exitCode})` : `failed as expected (exit code ${result.exitCode})`,
+    timed_out: `timed out after ${check.timeoutSec}s`,
+    killed: 'killed by a signal',
+  }[outcome];
+  return { check, ok: outcome === (expect === 'pass' ? 'passed' : 'failed'), outcome, why, tail: result.tail };
+}
+
+function checkError(expect: 'pass' | 'fail', wrong: CheckVerdict[]): string {
+  if (expect === 'pass') return `${wrong.length} required ${wrong.length === 1 ? 'check' : 'checks'} failed`;
+  const passed = wrong.filter((v) => v.outcome === 'passed');
+  const names = (passed.length ? passed : wrong).map((v) => v.check.name);
+  const them = names.length === 1 ? 'it' : 'them';
+  return `${names.join(', ')} ${passed.length ? 'passed' : 'did not finish'}; expected ${them} to fail`;
+}
+
+function checkFeedback(expect: 'pass' | 'fail', wrong: CheckVerdict[]): string {
+  if (expect === 'pass') return "The project's checks failed:";
+  return wrong.some((v) => v.outcome === 'passed')
+    ? 'The tests pass, but this step expects them to fail: the new tests must fail against the current code, for the reason the planned change will fix. Write tests that exercise the new behaviour.'
+    : 'The tests did not finish (they timed out or were killed) instead of failing. Make the new tests fail quickly against the current code, for the reason the planned change will fix.';
 }
 
 const stopped = (active: Active): Ending => ({
