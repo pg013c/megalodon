@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ScorecardQueries } from '../scorecard/projection';
 import { useTempDir } from '../test/tempDir';
 import { openDatabase } from './index';
 import { migrations } from './migrations';
@@ -49,5 +50,20 @@ describe('migrations', () => {
       { run_id: 'ended', step_id: 'fix', status: 'cancelled' },
       { run_id: 'live', step_id: 'implement', status: 'running' },
     ]);
+  });
+
+  it('12 adds the reviews table empty, and asks for a backfill when agent verdicts are in the log', () => {
+    const path = join(tempDir(), 'm.db');
+    const before = openDatabase(path, migrations.filter((m) => m.id <= 11));
+    before.exec(`
+      INSERT INTO decisions (id, task_id, run_id, step_id, kind, outcome, rationale, alternatives, inputs, actor, at, seq)
+      VALUES ('d', 't', 'r', 'review', 'review.verdict', 'approve', 's', '[]', '{}', '{"kind":"agent","agentId":"reviewer","version":"v"}', '2026-11-24T00:00:00Z', 1);
+      INSERT INTO scorecard_decisions (id, project_id, agent_id, agent_version, at) VALUES ('d', 'p', 'reviewer', 'v', '2026-11-24T00:00:00Z');
+    `);
+    before.close();
+
+    const after = openDatabase(path);
+    expect(after.prepare('SELECT COUNT(*) AS n FROM scorecard_reviews').get()).toEqual({ n: 0 });
+    expect(new ScorecardQueries(after).needsBackfill()).toBe(true);
   });
 });

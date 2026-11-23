@@ -74,6 +74,20 @@ export class ScorecardService {
     for (const row of this.deps.queries.decisions(projectId, since)) {
       Object.assign(score(row.agentId, row.agentVersion), { decisions: row.decisions, overridden: row.overridden });
     }
+    // only versions that gave a verdict get a reviewer block (ADR-0032)
+    for (const row of this.deps.queries.reviews(projectId, since)) {
+      score(row.agentId, row.agentVersion).reviewer = {
+        verdicts: row.verdicts,
+        approved: row.approved,
+        approvalRate: row.approved / row.verdicts,
+        avgScore: row.avgScore,
+        findings: { blocker: row.blockers, major: row.majors, minor: row.minors },
+        findingsPerReview: { blocker: row.blockers / row.verdicts, major: row.majors / row.verdicts, minor: row.minors / row.verdicts },
+        gated: row.gated,
+        sentBack: row.sentBack,
+        sentBackRate: ratio(row.sentBack, row.gated),
+      };
+    }
 
     const pipelineScores = this.deps.queries.pipelines(projectId, since).map((row): PipelineScore => {
       const current = pipelines.get(row.pipelineId);

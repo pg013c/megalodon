@@ -95,7 +95,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
   tool('get_overview', 'Every project at a glance, with spend for a period.', { period: periodSchema.default('7d') }, ({ period }) => deps.overview.view(period));
   tool(
     'get_scorecard',
-    'Success, rework, review score, cost, time and overrides per agent and pipeline version.',
+    'Success, rework, review score, cost, time and overrides per agent and pipeline version, and for reviewers the verdicts they gave (approval rate, score given, findings, sent back).',
     { projectId: z.string().optional().describe('Project id; all projects when left out.'), period: periodSchema.default('30d') },
     ({ projectId, period }) => deps.scorecard.view(period, projectId ? projects.get(projectId).id : null),
   );

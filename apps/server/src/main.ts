@@ -106,7 +106,7 @@ const chat = new ChatService({
   dataDir: config.dataDir,
   env,
 });
-// the scorecard (migration 10) came after the events it counts: fill it once from the log
+// the scorecard (migrations 10, 12) came after the events it counts: fill it once from the log
 if (new ScorecardQueries(db).needsBackfill()) store.rebuild(['scorecard']);
 runs.recover();
 triage.recover();

@@ -1,4 +1,4 @@
-import type { AgentScore, PipelineScore } from '@megalodon/contracts';
+import type { AgentScore, PipelineScore, ReviewerScore } from '@megalodon/contracts';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { cost } from '../../lib/format';
@@ -21,6 +21,19 @@ const agentScore = (agentId: string, agentVersion: string, current: boolean, mor
   avgDurationMs: 134_000,
   decisions: 0,
   overridden: 0,
+  ...more,
+});
+
+const reviewer = (more: Partial<ReviewerScore> = {}): ReviewerScore => ({
+  verdicts: 4,
+  approved: 3,
+  approvalRate: 0.75,
+  avgScore: 7.25,
+  findings: { blocker: 1, major: 2, minor: 5 },
+  findingsPerReview: { blocker: 0.25, major: 0.5, minor: 1.25 },
+  gated: 4,
+  sentBack: 1,
+  sentBackRate: 0.25,
   ...more,
 });
 
@@ -64,6 +77,46 @@ describe('AgentScoreTable', () => {
     expect(out).toContain('1 / 4');
     expect(out.indexOf('vbbbbbbb')).toBeLessThan(out.indexOf('Reviewer'));
     expect(out.indexOf('Implementer')).toBeLessThan(out.indexOf('vaaaaaaa'));
+  });
+
+  it('shows how a reviewer judged in its Review cell, and nothing of it for other agents', () => {
+    const out = renderToStaticMarkup(
+      <AgentScoreTable
+        agents={[agentScore('implementer', 'aaaaaaa1111', true), agentScore('reviewer', 'ccccccc3333', true, { reviewed: 0, reviewScore: null, reviewer: reviewer() })]}
+        onOpen={() => {}}
+      />,
+    );
+    expect(out).toContain('Approved 3/4');
+    expect(out).toContain('Score given 7.3');
+    expect(out).toContain('Findings 1/2/5');
+    expect(out).toContain('Sent back 25%');
+    expect(out.slice(0, out.indexOf('Reviewer'))).not.toContain('Approved');
+    // one version: no comparison strip
+    expect(out).not.toContain('Reviewer verdicts');
+  });
+
+  it('puts the verdicts of two reviewer versions side by side', () => {
+    const out = renderToStaticMarkup(
+      <AgentScoreTable
+        agents={[
+          agentScore('reviewer', 'ccccccc3333', true, { reviewer: reviewer() }),
+          agentScore('reviewer', 'ddddddd4444', false, { reviewer: reviewer({ approved: 1, approvalRate: 0.25, gated: 0, sentBack: 0, sentBackRate: null, findings: { blocker: 0, major: 0, minor: 9 } }) }),
+          agentScore('reviewer', 'eeeeeee5555', false),
+        ]}
+        onOpen={() => {}}
+      />,
+    );
+    const strip = out.slice(out.indexOf('Reviewer verdicts'));
+    expect(strip).toContain('Findings b/M/m');
+    expect(strip.indexOf('vccccccc')).toBeLessThan(strip.indexOf('75%'));
+    expect(strip.indexOf('75%')).toBeLessThan(strip.indexOf('vddddddd'));
+    expect(strip.indexOf('vddddddd')).toBeLessThan(strip.indexOf('25%', strip.indexOf('vddddddd')));
+    expect(strip).toContain('1/2/5');
+    expect(strip).toContain('0.3/0.5/1.3');
+    expect(strip).toContain('0/0/9');
+    expect(strip).toContain('25% of 4');
+    // a version that gave no verdict in the period still has its line
+    expect(strip).toContain('veeeeeee');
   });
 
   it('names an agent no longer in the library by its id', () => {
