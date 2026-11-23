@@ -78,6 +78,8 @@ export class EventStore {
    * (which must not read what the others derive).
    */
   rebuild(only?: readonly string[]): void {
+    const unknown = only?.filter((name) => !this.projections.some((p) => p.name === name)) ?? [];
+    if (unknown.length) throw new Error(`No projection named ${unknown.join(', ')}`);
     const projections = only ? this.projections.filter((p) => only.includes(p.name)) : this.projections;
     transaction(this.db, () => {
       for (const projection of projections) projection.reset(this.db);

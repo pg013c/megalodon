@@ -1,6 +1,7 @@
 import {
   decisionEvents,
   decisionMadeSchema,
+  mergeCompletedSchema,
   mergeEvents,
   runCompletedSchema,
   runEvents,
@@ -13,7 +14,7 @@ import type { Database } from '../db';
 import type { Projection } from '../events/projection';
 
 /**
- * What the scorecard counts per run, agent step attempt and agent decision (migration 10,
+ * What the scorecard counts per run, step attempt and agent decision (migration 10,
  * ADR-0032). It reads only its own tables and the task's project, so it rebuilds by itself.
  */
 export class ScorecardProjection implements Projection {
@@ -39,21 +40,24 @@ export class ScorecardProjection implements Projection {
           | { project_id: string; retry_next: string | null }
           | undefined;
         if (!run) return;
+        // an earlier attempt of this step that never completed was cut off by a Megalodon restart:
+        // this attempt starts it over and replaces it, keeping its rework
+        const interrupted = db
+          .prepare("SELECT MAX(rework) AS rework FROM scorecard_steps WHERE run_id = ? AND step_id = ? AND status = 'running'")
+          .get(s.runId, s.stepId) as { rework: number | null };
+        db.prepare("DELETE FROM scorecard_steps WHERE run_id = ? AND step_id = ? AND status = 'running'").run(s.runId, s.stepId);
         // a retry sent the run back to this step: the attempt is rework
-        const rework = s.attempt > 1 && run.retry_next === s.stepId;
+        const rework = (s.attempt > 1 && run.retry_next === s.stepId) || interrupted.rework === 1;
         db.prepare(
-          `UPDATE scorecard_runs SET attempts = MAX(attempts, ?), retry_next = CASE WHEN retry_next = ? THEN NULL ELSE retry_next END
+          `INSERT OR REPLACE INTO scorecard_steps (run_id, step_id, attempt, project_id, kind, agent_id, agent_version, status, rework, started_at, seq)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
+        ).run(s.runId, s.stepId, s.attempt, run.project_id, s.kind, s.agentId, s.agentVersion, rework ? 1 : 0, event.at, event.seq);
+        // attempts count what ran, not attempt numbers a restart skipped
+        db.prepare(
+          `UPDATE scorecard_runs SET retry_next = CASE WHEN retry_next = ? THEN NULL ELSE retry_next END,
+             attempts = MAX(attempts, (SELECT COUNT(*) FROM scorecard_steps WHERE run_id = ? AND step_id = ?))
            WHERE run_id = ?`,
-        ).run(s.attempt, s.stepId, s.runId);
-        if (s.kind !== 'agent' || !s.agentId || !s.agentVersion) return;
-        // an attempt restarted after a restart starts over, but stays rework if it was
-        db.prepare(
-          `INSERT INTO scorecard_steps (run_id, step_id, attempt, project_id, agent_id, agent_version, status, rework, started_at, seq)
-           VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)
-           ON CONFLICT (run_id, step_id, attempt) DO UPDATE SET agent_id = excluded.agent_id, agent_version = excluded.agent_version,
-             status = 'running', rework = MAX(rework, excluded.rework), structured = 0, review_score = NULL, cost_usd = 0,
-             duration_ms = NULL, started_at = excluded.started_at, seq = excluded.seq`,
-        ).run(s.runId, s.stepId, s.attempt, run.project_id, s.agentId, s.agentVersion, rework ? 1 : 0, event.at, event.seq);
+        ).run(s.stepId, s.runId, s.stepId, s.runId);
         return;
       }
       case runEvents.stepCompleted: {
@@ -76,7 +80,7 @@ export class ScorecardProjection implements Projection {
         return;
       }
       case mergeEvents.completed: {
-        const runId = (event.data as { runId?: string | null }).runId;
+        const { runId } = mergeCompletedSchema.parse(event.data);
         if (runId) db.prepare('UPDATE scorecard_runs SET merged = 1 WHERE run_id = ?').run(runId);
         return;
       }
@@ -97,7 +101,7 @@ export class ScorecardProjection implements Projection {
       if (d.kind === 'review.verdict' && actor.kind === 'agent' && typeof d.inputs.score === 'number') {
         db.prepare(
           `UPDATE scorecard_steps SET review_score = ? WHERE rowid = (
-             SELECT rowid FROM scorecard_steps WHERE run_id = ? AND structured = 0 AND status = 'succeeded' ORDER BY seq DESC LIMIT 1)`,
+             SELECT rowid FROM scorecard_steps WHERE run_id = ? AND kind = 'agent' AND structured = 0 AND status = 'succeeded' ORDER BY seq DESC LIMIT 1)`,
         ).run(d.inputs.score, d.runId);
       }
     }
@@ -172,8 +176,8 @@ export class ScorecardQueries {
         `SELECT agent_id AS agentId, agent_version AS agentVersion, COUNT(DISTINCT run_id) AS runs, COUNT(*) AS steps,
            SUM(status = 'succeeded') AS succeeded, SUM(status IN ('succeeded', 'failed')) AS ended, SUM(rework) AS rework,
            COUNT(review_score) AS reviewed, AVG(review_score) AS reviewScore, SUM(cost_usd) AS costUsd,
-           AVG(CASE WHEN duration_ms IS NOT NULL THEN cost_usd END) AS avgCostUsd, AVG(duration_ms) AS avgDurationMs
-         FROM scorecard_steps WHERE (? IS NULL OR project_id = ?) AND started_at >= ?
+           AVG(CASE WHEN status != 'running' THEN cost_usd END) AS avgCostUsd, AVG(duration_ms) AS avgDurationMs
+         FROM scorecard_steps WHERE kind = 'agent' AND agent_version IS NOT NULL AND (? IS NULL OR project_id = ?) AND started_at >= ?
          GROUP BY agent_id, agent_version`,
       )
       .all(projectId, projectId, since ?? '') as unknown as AgentStepRow[];

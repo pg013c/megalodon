@@ -25,16 +25,21 @@ aggregated these versions yet, and "success" and "rework" need one meaning befor
 - **Rework**: an agent attempt started because a `retry` decision (`retry <step>`) sent the run
   back to that step (`inputs.next`), after failed checks or a failed review gate. It counts against
   the version that ran the retried step (the implementer in `feature`). Running the reviewer again
-  afterwards is not rework. An attempt restarted after a Megalodon restart keeps its number and is
-  never rework by itself.
+  afterwards is not rework.
+- **Restarts**: an attempt that continues its agent session after a Megalodon restart is the same
+  attempt. An attempt that was cut off and started over gets the next attempt number; it replaces
+  the interrupted one (which never completed), so the work counts once, keeps the interrupted
+  attempt's rework flag, and does not raise the run's attempts. A restart is never rework by itself.
 - **Review score**: the `score` of a `review.verdict` made by an agent belongs to the latest
   succeeded agent attempt in the same run that completed without structured output (no output
   contract, i.e. the implementer). Plan and review steps never receive it. The original verdict
   counts even when the operator later overrides it. A custom pipeline with two contract-less agents
   credits the later one; a review with no such attempt before it credits nobody.
 - **Overrides**: decisions made by an agent (`review.verdict`, `triage`) that a later decision
-  superseded. Policy decisions (`gate`, `merge`, `retry`, `plan`, `queue`) are not agent decisions.
-- **Pipeline run**: attempts = the highest attempt number of any step; cost = the sum of step costs;
+  superseded (`overrides`), whoever made the later one. Policy decisions (`gate`, `merge`, `retry`, `plan`, `queue`) are not agent decisions.
+- **Averages per agent version**: cost and duration per attempt that ended (succeeded, failed or
+  cancelled); `costUsd` is the total over all its attempts.
+- **Pipeline run**: attempts = the most attempts any of its steps took; cost = the sum of step costs;
   duration = the sum of step attempt durations, i.e. working time without time parked at a gate or
   queued (as agent time in ADR-0029). Averages are over finished runs (succeeded, failed,
   cancelled).
@@ -54,3 +59,6 @@ aggregated these versions yet, and "success" and "rework" need one meaning befor
 - A run that succeeded but still waits in the merge queue lowers the unattended share until it
   merges.
 - Costs are the SDK's estimates (ADR-0029), not a bill.
+- `overridden` counts any decision that supersedes an agent decision. Today only the operator's
+  override (`DecisionService.override`) sets `overrides`; if a system or agent re-decision ever does,
+  it would count as an override too, because the projection does not check who superseded it.

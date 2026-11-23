@@ -104,16 +104,51 @@ describe('ScorecardService: agents', () => {
   });
 
   it('counts failed attempts and leaves stopped ones out', async () => {
-    const server = await setup({ implementer: (_, call) => (call === 1 ? { ok: false, error: 'error_max_turns' } : { hang: true }) });
-    await server.run('a', { agentId: 'implementer' });
-    const t = server.task('b');
+    const server = await setup({
+      implementer: (input, call) => (call === 1 ? { files: { [fileOf(input)]: 'hi\n' } } : call === 2 ? { ok: false, error: 'error_max_turns' } : { hang: true }),
+    });
+    expect((await server.run('a', { agentId: 'implementer' })).run.status).toBe('succeeded');
+    expect((await server.run('b', { agentId: 'implementer' })).run.status).toBe('failed');
+    const t = server.task('c');
     const stopped = await server.runs.start(t.id, { agentId: 'implementer' });
     server.runs.stop(stopped.id);
     await server.runs.idle();
+    expect(server.runs.queries.run(stopped.id)?.status).toBe('cancelled');
+    expect(server.runs.queries.steps(stopped.id).map((s) => s.status)).toEqual(['cancelled']);
 
     const card = server.scorecard.view('30d', null);
-    expect(agent(card, 'implementer')).toMatchObject({ runs: 2, steps: 2, succeeded: 0, successRate: 0, rework: 0 });
-    expect(pipeline(card, 'agent:implementer')).toMatchObject({ name: 'Implementer', runs: 2, finished: 2, merged: 0, mergedUnattended: 0, unattendedRate: 0 });
+    // 1 succeeded of 2 that ended: the stopped attempt is not in the denominator (that would be 1/3)
+    expect(agent(card, 'implementer')).toMatchObject({ runs: 3, steps: 3, succeeded: 1, successRate: 0.5, rework: 0 });
+    expect(pipeline(card, 'agent:implementer')).toMatchObject({ name: 'Implementer', runs: 3, finished: 3, merged: 0, mergedUnattended: 0, unattendedRate: 0 });
+  });
+
+  it('counts an attempt started over after a restart once, keeping its rework', async () => {
+    const server = await setup();
+    const t = server.task('r');
+    const run = (data: Record<string, unknown>) => ({ stream: 'run:r', data: { runId: 'r', ...data }, actor: { kind: 'system' as const } });
+    const step = (stepId: string, attempt: number, kind: 'agent' | 'check') =>
+      run({ stepId, attempt, index: 0, kind, name: stepId, agentId: kind === 'agent' ? 'implementer' : null, agentVersion: kind === 'agent' ? 'v' : null });
+    const done = (stepId: string, attempt: number, status: 'succeeded' | 'failed') =>
+      run({ stepId, attempt, status, usage: { costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, durationMs: 5, numTurns: 1, result: null, error: null });
+    server.store.append([
+      { type: runEvents.started, ...run({ taskId: t.id, projectId: server.project.id, pipelineId: 'feature', pipelineVersion: 'v', branch: 'b', worktreePath: '/nowhere', baseRef: 'main', baseSha: 'x', plan: [] }) },
+      { type: runEvents.stepStarted, ...step('implement', 1, 'agent') },
+      { type: runEvents.stepCompleted, ...done('implement', 1, 'succeeded') },
+      { type: runEvents.stepStarted, ...step('checks', 1, 'check') },
+      { type: runEvents.stepCompleted, ...done('checks', 1, 'failed') },
+      server.decisions.event({ taskId: t.id, runId: 'r', stepId: 'checks', kind: 'retry', outcome: 'retry implement', rationale: 'r', alternatives: [], inputs: { next: 'implement' }, actor: { kind: 'policy', policy: 'p' } }),
+      // attempt 2 is rework; Megalodon stops before it completes and starts it over as attempt 3
+      { type: runEvents.stepStarted, ...step('implement', 2, 'agent') },
+      { type: runEvents.stepStarted, ...step('implement', 3, 'agent') },
+      { type: runEvents.stepCompleted, ...done('implement', 3, 'succeeded') },
+      { type: runEvents.stepStarted, ...step('checks', 2, 'check') },
+      { type: runEvents.stepCompleted, ...done('checks', 2, 'succeeded') },
+      { type: runEvents.completed, ...run({ status: 'succeeded', commitSha: null, error: null }) },
+    ]);
+
+    const card = server.scorecard.view('30d', null);
+    expect(card.agents.find((a) => a.agentVersion === 'v')).toMatchObject({ steps: 2, succeeded: 2, successRate: 1, rework: 1 });
+    expect(card.pipelines.find((p) => p.pipelineVersion === 'v')).toMatchObject({ runs: 1, finished: 1, avgAttempts: 2, avgCostUsd: expect.closeTo(0.4, 6), avgDurationMs: 20 });
   });
 
   it('counts the decisions of an agent the operator overrode', async () => {

@@ -109,6 +109,8 @@ describe('EventStore', () => {
 
     expect(db.prepare("SELECT count FROM test_counts WHERE stream = 'task:1'").get()).toEqual({ count: 2 });
     expect(other.applied).toBe(42);
+    expect(() => store.rebuild(['test-countr'])).toThrow('No projection named test-countr');
+    expect(db.prepare("SELECT count FROM test_counts WHERE stream = 'task:1'").get()).toEqual({ count: 2 });
   });
 
   it('notifies subscribers after commit only', () => {

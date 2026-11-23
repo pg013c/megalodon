@@ -20,10 +20,12 @@ export const agentScoreSchema = z.object({
   /** Attempts a review scored, and their average score. */
   reviewed: z.number().int(),
   reviewScore: z.number().nullable(),
+  /** Cost of all its attempts in the period. */
   costUsd: z.number(),
+  /** Per attempt that ended (succeeded, failed or cancelled); null when none ended. */
   avgCostUsd: z.number().nullable(),
   avgDurationMs: z.number().nullable(),
-  /** Decisions it made, and how many of them the operator overrode. */
+  /** Decisions it made, and how many of them a later decision overrode. */
   decisions: z.number().int(),
   overridden: z.number().int(),
 });
@@ -43,8 +45,11 @@ export const pipelineScoreSchema = z.object({
   mergedUnattended: z.number().int(),
   /** mergedUnattended of finished; null when none finished. */
   unattendedRate: z.number().nullable(),
+  /** Per finished run: the most attempts any of its steps took; null when none finished. */
   avgAttempts: z.number().nullable(),
+  /** Cost of all its runs in the period. */
   costUsd: z.number(),
+  /** Per finished run: cost, and working time (the sum of its step durations). */
   avgCostUsd: z.number().nullable(),
   avgDurationMs: z.number().nullable(),
 });
