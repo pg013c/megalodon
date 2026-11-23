@@ -2,8 +2,10 @@ import { join } from 'node:path';
 import {
   apiErrorSchema,
   defaultPolicies,
+  mergeEvents,
   runEvents,
   scorecardSchema,
+  taskStream,
   type AgentScore,
   type PipelineScore,
   type Policies,
@@ -151,6 +153,47 @@ describe('ScorecardService: agents', () => {
     expect(card.pipelines.find((p) => p.pipelineVersion === 'v')).toMatchObject({ runs: 1, finished: 1, avgAttempts: 2, avgCostUsd: expect.closeTo(0.4, 6), avgDurationMs: 20 });
   });
 
+  it('closes attempts that never reported their end when their run ends, and leaves them out of the averages', async () => {
+    const server = await setup();
+    const events = (runId: string, version: string) => {
+      const t = server.task(runId);
+      const run = (data: Record<string, unknown>) => ({ stream: `run:${runId}`, data: { runId, ...data }, actor: { kind: 'system' as const } });
+      return {
+        started: { type: runEvents.started, ...run({ taskId: t.id, projectId: server.project.id, pipelineId: 'feature', pipelineVersion: version, branch: 'b', worktreePath: '/nowhere', baseRef: 'main', baseSha: 'x', plan: [] }) },
+        step: (stepId: string) => ({
+          type: runEvents.stepStarted,
+          ...run({ stepId, attempt: 1, index: 0, kind: 'agent', name: stepId, agentId: 'implementer', agentVersion: version }),
+        }),
+        done: (stepId: string) => ({
+          type: runEvents.stepCompleted,
+          ...run({ stepId, attempt: 1, status: 'succeeded', usage: { costUsd: 0.1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, durationMs: 5, numTurns: 1, result: null, error: null }),
+        }),
+        failed: { type: runEvents.completed, ...run({ status: 'failed', commitSha: null, error: 'Megalodon error: boom' }) },
+      };
+    };
+    // run e: its only attempt is cut off; run f: one attempt completes, the next is cut off
+    const e = events('e', 'v');
+    const f = events('f', 'w');
+    server.store.append([e.started, e.step('implement'), e.failed, f.started, f.step('implement'), f.done('implement'), f.step('fix'), f.failed]);
+
+    expect(server.db.prepare("SELECT status FROM scorecard_steps WHERE run_id = 'e'").all()).toEqual([{ status: 'cancelled' }]);
+    const card = server.scorecard.view('all', null);
+    expect(card.agents.find((a) => a.agentVersion === 'v')).toMatchObject({ steps: 1, succeeded: 0, successRate: null, costUsd: 0, avgCostUsd: null, avgDurationMs: null });
+    // the cut-off attempt counts in steps but does not halve the averages
+    expect(card.agents.find((a) => a.agentVersion === 'w')).toMatchObject({
+      steps: 2,
+      succeeded: 1,
+      successRate: 1,
+      costUsd: expect.closeTo(0.1, 6),
+      avgCostUsd: expect.closeTo(0.1, 6),
+      avgDurationMs: 5,
+    });
+    expect(card.pipelines.find((p) => p.pipelineVersion === 'v')).toMatchObject({ runs: 1, finished: 1 });
+
+    server.store.rebuild(['scorecard']);
+    expect(server.scorecard.view('all', null)).toEqual(card);
+  });
+
   it('counts the decisions of an agent the operator overrode', async () => {
     const server = await setup();
     const { run } = await server.run('a');
@@ -282,6 +325,27 @@ describe('ScorecardService: versions and filters', () => {
     server.store.rebuild(['scorecard']);
     expect(server.scorecard.view('all', null)).toEqual(before);
     expect(new ScorecardQueries(server.db).needsBackfill()).toBe(false);
+  });
+
+  it('reads a merge.completed without a runId and still rebuilds', async () => {
+    const server = await setup();
+    const t = server.task('m');
+    const run = (data: Record<string, unknown>) => ({ stream: 'run:m', data: { runId: 'm', ...data }, actor: { kind: 'system' as const } });
+    const merged = (data: Record<string, unknown>) => ({ type: mergeEvents.completed, stream: taskStream(t.id), data: { taskId: t.id, sha: 'abc', ...data }, actor: { kind: 'system' as const } });
+    server.store.append([
+      { type: runEvents.started, ...run({ taskId: t.id, projectId: server.project.id, pipelineId: 'feature', pipelineVersion: 'v', branch: 'b', worktreePath: '/nowhere', baseRef: 'main', baseSha: 'x', plan: [] }) },
+      { type: runEvents.completed, ...run({ status: 'succeeded', commitSha: null, error: null }) },
+    ]);
+    // an older payload, from before merge.completed named its run
+    expect(() => server.store.append([merged({})])).not.toThrow();
+    server.store.append([merged({ runId: 'm' })]);
+
+    const before = server.scorecard.view('all', null);
+    expect(before.pipelines.find((p) => p.pipelineVersion === 'v')).toMatchObject({ runs: 1, finished: 1, merged: 1 });
+    expect(() => server.store.rebuild(['scorecard'])).not.toThrow();
+    expect(server.scorecard.view('all', null)).toEqual(before);
+    expect(() => server.store.rebuild()).not.toThrow();
+    expect(server.scorecard.view('all', null)).toEqual(before);
   });
 });
 
