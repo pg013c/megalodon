@@ -1,9 +1,9 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { commitAll, initRepo, sh } from '../test/repo';
+import { commitAll, initRepo, sh, write } from '../test/repo';
 import { useTempDir } from '../test/tempDir';
-import { currentBranch, dirtyFiles, globToRegExp, merge, predictConflicts, unmergedFiles } from './git';
+import { addedFiles, currentBranch, dirtyFiles, globToRegExp, merge, predictConflicts, treeFiles, unmergedFiles } from './git';
 
 const tempDir = useTempDir();
 
@@ -29,6 +29,17 @@ describe('merge git helpers', () => {
     writeFileSync(join(root, 'a.txt'), 'changed\n');
     writeFileSync(join(root, 'new.txt'), 'untracked\n');
     expect(await dirtyFiles(root)).toEqual(['a.txt']);
+  });
+
+  it('lists added files with renames as additions, and paths as they are', async () => {
+    const root = initRepo(join(tempDir(), 'r'), { 'docs/adr/0001-a.md': '# ADR-0001: A\n\nThe first decision.\n', 'docs/adr/0002-b.md': '# ADR-0002: B\n\nThe second decision, long enough to be found as a rename.\n' });
+    sh(root, 'checkout', '-q', '-b', 'feature');
+    sh(root, 'mv', 'docs/adr/0002-b.md', 'docs/adr/0001-b.md');
+    write(root, { 'docs/adr/0003-zażółć.md': '# ADR-0003\n', 'docs/adr/nested/0004-c.md': '# ADR-0004\n' });
+    commitAll(root, 'feature');
+
+    expect((await addedFiles(root, 'main')).sort()).toEqual(['docs/adr/0001-b.md', 'docs/adr/0003-zażółć.md', 'docs/adr/nested/0004-c.md']);
+    expect(await treeFiles(root, 'docs/adr')).toEqual(['docs/adr/0001-a.md', 'docs/adr/0001-b.md', 'docs/adr/0003-zażółć.md', 'docs/adr/nested']);
   });
 
   it('matches sensitive-path globs', () => {

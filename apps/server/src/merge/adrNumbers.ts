@@ -25,11 +25,11 @@ export function duplicateAdrNumbers(paths: readonly string[]): Map<string, strin
  */
 export function adrClash(paths: readonly string[], added: readonly string[]): string | null {
   const addedSet = new Set(added);
+  const next = String(Math.max(0, ...paths.map((p) => Number(adrNumber(p) ?? 0))) + 1).padStart(4, '0');
   for (const [n, files] of duplicateAdrNumbers(paths)) {
     const own = files.find((f) => addedSet.has(f));
     if (!own) continue;
     const other = files.find((f) => !addedSet.has(f));
-    const next = String(Math.max(...paths.map((p) => Number(adrNumber(p) ?? 0))) + 1).padStart(4, '0');
     const holder = other ? `which ${other} already has on the base` : `which ${files.find((f) => f !== own)} takes too`;
     return `${own} takes ADR-${n}, ${holder}; renumber it to ADR-${next} and update its references ("ADR-${n}" in docs and code).`;
   }
