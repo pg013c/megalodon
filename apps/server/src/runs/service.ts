@@ -10,7 +10,9 @@ import {
   zeroUsage,
   type Actor,
   type Agent,
+  type CommitOutput,
   type NewEvent,
+  type OutputContract,
   type PlannedStep,
   type PlanOutput,
   type Project,
@@ -25,17 +27,19 @@ import {
 import type { DecisionService } from '../decisions/service';
 import { AppError } from '../errors';
 import type { EventStore } from '../events/store';
+import { GitError } from '../git/git';
 import type { Library } from '../library/library';
 import type { ProjectsQueries } from '../projects/projection';
 import type { AgentRuntime } from '../runtime/types';
 import type { WorkService } from '../work/service';
 import { runCommand } from './command';
+import { runCommitMessage } from './commits';
 import { changedFiles, globToRegExp } from '../merge/git';
 import { touchesOverlap } from '../work/readiness';
 import { addWorktree, branchDiff, commitAll, head, revParse, taskBranch, worktreeExists } from './git';
 import { buildPlan, runPosition, type RunPosition } from './plan';
 import type { RunsQueries } from './projection';
-import { fixPrompt, implementationPrompt, planningPrompt, resumePrompt, reviewFeedback, reviewPrompt, taskPrompt } from './prompts';
+import { commitInstructions, fixPrompt, implementationPrompt, planningPrompt, resumePrompt, reviewFeedback, reviewPrompt, taskPrompt } from './prompts';
 
 const OPERATOR: Actor = { kind: 'operator' };
 const SYSTEM: Actor = { kind: 'system' };
@@ -73,8 +77,8 @@ type StepOutcome =
   | { kind: 'passed' }
   /** A gate holds the run for the operator (the plan); it continues when they approve. */
   | { kind: 'waiting'; reason: string }
-  /** Checks failed or a gate said no: the step's onFail rule decides. */
-  | { kind: 'rejected'; feedback: string; events: NewEvent[] }
+  /** Checks failed or a gate said no: the step's onFail rule decides, unless the outcome brings its own. */
+  | { kind: 'rejected'; feedback: string; events: NewEvent[]; rule?: { retry: string; max: number } }
   | { kind: 'error'; error: string }
   | { kind: 'stopped' };
 
@@ -255,10 +259,8 @@ export class RunService {
       if (outcome.kind === 'waiting') return this.wait(run, outcome.reason);
       if (outcome.kind === 'error') return this.finish(run, { status: 'failed', error: outcome.error, taskTo: 'failed' });
 
-      if (step.kind === 'agent') await commitAll(run.worktreePath, commitMessage(task, step, attempt, this.lastResult(runId, step.stepId)));
-
       if (outcome.kind === 'rejected') {
-        const rule = step.kind === 'command' ? null : step.onFail;
+        const rule = outcome.rule ?? (step.kind === 'command' ? null : step.onFail);
         const used = position.retries.get(step.stepId) ?? 0;
         if (rule && used < rule.max) {
           this.deps.store.append([
@@ -339,10 +341,6 @@ export class RunService {
     return sha === run.baseSha ? null : sha;
   }
 
-  private lastResult(runId: string, stepId: string): string {
-    return this.deps.runs.steps(runId).filter((s) => s.stepId === stepId).at(-1)?.result ?? '';
-  }
-
   private async commandStep(run: Run, step: Extract<PlannedStep, { kind: 'command' }>, attempt: number, index: number, active: Active): Promise<StepOutcome> {
     this.stepStarted(run.id, step.stepId, attempt, index, 'command', step.name, null, null);
     const started = Date.now();
@@ -404,13 +402,15 @@ export class RunService {
     resumeSessionId: string | null,
   ): Promise<StepOutcome> {
     const agent = this.deps.library.agent(step.agentId);
+    // under Conventional Commits an agent without its own contract answers with its commit message (ADR-0033)
+    const contract: OutputContract | undefined = agent.output ?? (project.settings.commits.style === 'conventional' ? 'commit' : undefined);
     if (!resumeSessionId) this.stepStarted(run.id, step.stepId, attempt, position.index, 'agent', step.name, agent.id, agent.version);
     const { prompt, session } = resumeSessionId
       ? { prompt: resumePrompt, session: resumeSessionId }
-      : await this.agentPrompt(run, step, agent, position, task, project);
+      : await this.agentPrompt(run, step, agent, contract, position, task, project);
 
     for await (const event of this.deps.runtime.run({
-      agent,
+      agent: contract === agent.output ? agent : { ...agent, output: contract },
       cwd: run.worktreePath,
       prompt,
       env: this.deps.env,
@@ -433,15 +433,43 @@ export class RunService {
       if (!event.ok) return active.stop ? fail('cancelled', 'Stopped') : fail('failed', event.error ?? 'failed');
 
       let output: unknown;
-      if (agent.output) {
-        const parsed = outputContracts[agent.output].safeParse(event.output);
-        if (!parsed.success) return fail('failed', `answered without a valid ${agent.output} (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+      let commit: CommitOutput | null = null;
+      if (contract === 'commit') {
+        // a missing commit message is not worth failing the work for: the fallback subject applies
+        const parsed = outputContracts.commit.safeParse(event.output);
+        commit = parsed.success ? parsed.data : null;
+      } else if (contract) {
+        const parsed = outputContracts[contract].safeParse(event.output);
+        if (!parsed.success) return fail('failed', `answered without a valid ${contract} (${parsed.error.issues[0]?.message ?? 'invalid'})`);
         output = parsed.data;
       }
+      // the commit message lives in git, not in the step's output: that stays the agent contract's (ADR-0032, ADR-0033)
+      const result = event.result?.trim() ? event.result : (commit?.summary ?? event.result);
+
+      try {
+        const message = runCommitMessage(project.settings.commits, task, step, attempt, event.result ?? '', commit?.commit ?? null);
+        await commitAll(run.worktreePath, message, { hooks: project.settings.commits.hooks, env: this.deps.env });
+      } catch (error) {
+        if (!project.settings.commits.hooks || !(error instanceof GitError)) throw error;
+        // a failing hook fails the step like failing checks: the agent gets the hook's output and tries again
+        const failed: NewEvent = {
+          type: runEvents.stepCompleted,
+          stream: runStream(run.id),
+          data: completed(run.id, step.stepId, attempt, 'failed', event.usage, event.durationMs, event.numTurns, result, 'The commit hooks failed'),
+          actor: SYSTEM,
+        };
+        return {
+          kind: 'rejected',
+          feedback: `The project's git hooks rejected the commit:\n\n${error.stderr.trim().slice(-3_000)}`,
+          events: [failed],
+          rule: { retry: step.stepId, max: project.settings.maxFixPasses },
+        };
+      }
+
       const done: NewEvent = {
         type: runEvents.stepCompleted,
         stream: runStream(run.id),
-        data: { ...completed(run.id, step.stepId, attempt, 'succeeded', event.usage, event.durationMs, event.numTurns, event.result, null), ...(output !== undefined ? { output } : {}) },
+        data: { ...completed(run.id, step.stepId, attempt, 'succeeded', event.usage, event.durationMs, event.numTurns, result, null), ...(output !== undefined ? { output } : {}) },
         actor: SYSTEM,
       };
       if (agent.output === 'plan') return this.approvePlan(run, task, project, step, output as PlanOutput, done);
@@ -541,6 +569,7 @@ export class RunService {
     run: Run,
     step: Extract<PlannedStep, { kind: 'agent' }>,
     agent: Agent,
+    contract: OutputContract | undefined,
     position: RunPosition,
     task: Task,
     project: Project,
@@ -553,10 +582,11 @@ export class RunService {
       return { prompt: reviewPrompt(base, plan, await branchDiff(run.worktreePath, run.baseSha), checks), session: null };
     }
     // a retry continues the agent's previous session with the reason, when there is one
+    const commit = contract === 'commit' ? `\n\n${commitInstructions}` : '';
     const previous = position.sessions.get(step.stepId) ?? null;
-    if (position.feedback && previous) return { prompt: fixPrompt(position.feedback), session: previous };
+    if (position.feedback && previous) return { prompt: `${fixPrompt(position.feedback)}${commit}`, session: previous };
     const prompt = implementationPrompt(base, plan);
-    return { prompt: position.feedback ? `${prompt}\n\n${fixPrompt(position.feedback)}` : prompt, session: null };
+    return { prompt: `${position.feedback ? `${prompt}\n\n${fixPrompt(position.feedback)}` : prompt}${commit}`, session: null };
   }
 
   private command(run: Run, stepId: string, command: string, timeoutMs: number, active: Active) {
@@ -650,12 +680,6 @@ const stopped = (active: Active): Ending => ({
   status: 'cancelled',
   error: active.stop === 'operator' ? 'Stopped by you' : 'Task cancelled',
 });
-
-function commitMessage(task: Task, step: Extract<PlannedStep, { kind: 'agent' }>, attempt: number, summary: string): string {
-  const subject = attempt === 1 ? `#${task.number} ${task.title}` : `#${task.number} ${step.name}: fixes (attempt ${attempt})`;
-  const body = summary.trim().slice(0, 4_000);
-  return `${subject}${body ? `\n\n${body}` : ''}`;
-}
 
 /**
  * The environment agents and commands get: the server's own, minus credentials Megalodon uses for

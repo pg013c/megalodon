@@ -14,6 +14,8 @@ export class GitError extends Error {
 export interface GitOptions {
   timeoutMs?: number;
   maxBytes?: number;
+  /** The environment git (and the hooks it runs) gets; the server's own when not given. */
+  env?: Record<string, string>;
 }
 
 /** Runs git without a shell, never prompting for credentials. Resolves with stdout. */
@@ -27,7 +29,7 @@ export function git(cwd: string, args: readonly string[], options: GitOptions = 
         cwd,
         timeout: timeoutMs,
         maxBuffer: maxBytes,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' },
+        env: { ...(options.env ?? process.env), GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' },
       },
       (error, stdout, stderr) => {
         if (!error) return resolve(stdout);

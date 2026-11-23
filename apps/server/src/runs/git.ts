@@ -32,13 +32,20 @@ export async function addWorktree(root: string, path: string, branch: string, ba
 
 export const worktreeExists = (path: string) => existsSync(path);
 
-/** Commits everything in the worktree; null when there is nothing to commit. */
-export async function commitAll(cwd: string, message: string): Promise<string | null> {
+/**
+ * Commits everything in the worktree; null when there is nothing to commit. With `hooks`, the
+ * project's git hooks run with `env` and a failing hook throws `GitError` (ADR-0033).
+ */
+export async function commitAll(cwd: string, message: string, options: { hooks?: boolean; env?: Record<string, string> } = {}): Promise<string | null> {
   await git(cwd, ['add', '-A']);
   if ((await git(cwd, ['status', '--porcelain'])).trim() === '') return null;
-  await git(cwd, ['commit', '-q', '--no-verify', '-m', message]);
+  if (options.hooks) await git(cwd, ['commit', '-q', '-m', message], { ...(options.env ? { env: options.env } : {}), timeoutMs: HOOKS_TIMEOUT_MS });
+  else await git(cwd, ['commit', '-q', '--no-verify', '-m', message]);
   return (await git(cwd, ['rev-parse', 'HEAD'])).trim();
 }
+
+/** Pre-commit hooks may run linters or tests. */
+const HOOKS_TIMEOUT_MS = 15 * 60_000;
 
 const DIFF_LIMIT = 60_000;
 

@@ -69,6 +69,25 @@ describe('MergeService', () => {
     expect(existsSync(join(root, 'a.txt')) && existsSync(join(root, 'b.txt'))).toBe(true);
   });
 
+  it('writes merge commits as `merge:` under Conventional Commits', async () => {
+    const { merges, root, finished, projects, project } = await setup();
+    await projects.updateSettings(project.id, { ...project.settings, commits: { style: 'conventional', trailers: [], hooks: false } });
+    await finished('a.txt');
+    await finished('b.txt');
+
+    await merges.tick();
+
+    expect(sh(root, 'log', '-1', '--format=%s').trim()).toBe('merge: #2 b.txt');
+    expect(sh(root, 'log', '--format=%s').trim().split('\n').sort()).toEqual([
+      'chore: #1 a.txt',
+      'chore: #2 b.txt',
+      'initial',
+      'merge: #1 a.txt',
+      'merge: #2 b.txt',
+      'merge: main into megalodon/2-b-txt',
+    ]);
+  });
+
   it('lets the resolver settle conflicts with the base', async () => {
     const { merges, root, finished, status, runtime } = await setup({
       implementer: (input) => ({ files: { 'shared.txt': `${/: (\S+)/.exec(input.prompt)?.[1]}\n` } }),

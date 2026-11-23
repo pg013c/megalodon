@@ -109,6 +109,42 @@ export function ProjectSettingsScreen() {
         </Field>
       </Section>
 
+      <Section title="Commits" description="How Megalodon writes the commits on task branches.">
+        <div className="inline-flex rounded-full bg-line/60 p-0.5">
+          {(['megalodon', 'conventional'] as const).map((style) => (
+            <button
+              key={style}
+              type="button"
+              onClick={() => set('commits', { ...form.commits, style })}
+              className={`rounded-full px-4 py-1 text-[13px] ${form.commits.style === style ? 'bg-surface font-medium shadow-sm' : 'text-muted'}`}
+            >
+              {style === 'megalodon' ? 'Megalodon (#N title)' : 'Conventional Commits'}
+            </button>
+          ))}
+        </div>
+        {form.commits.style === 'conventional' && (
+          <p className="text-[13px] text-muted">
+            The implementer writes the message (type(scope): summary); merges are recorded as merge: #N title, which strict commitlint
+            setups may reject.
+          </p>
+        )}
+        <Field label="Trailers" hint="Added to every run commit. One per line, e.g. Signed-off-by: Name <email>">
+          <TextArea value={form.commits.trailers} onChange={(e) => set('commits', { ...form.commits, trailers: e.target.value })} spellCheck={false} />
+        </Field>
+        <label className="flex items-start gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={form.commits.hooks}
+            onChange={(e) => set('commits', { ...form.commits, hooks: e.target.checked })}
+          />
+          <span>
+            Run the project's git hooks
+            <span className="block text-xs text-muted">A failing hook sends the work back to the agent with the hook's output.</span>
+          </span>
+        </label>
+      </Section>
+
       <Section title="Knowledge base" description="PRD, ADRs and decisions agents read and update.">
         <div className="inline-flex rounded-full bg-line/60 p-0.5">
           {(['repo', 'external'] as const).map((location) => (

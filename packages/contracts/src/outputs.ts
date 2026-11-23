@@ -38,10 +38,25 @@ export const triageOutputSchema = z.object({
 });
 export type TriageOutput = z.infer<typeof triageOutputSchema>;
 
+/**
+ * What an implementing agent answers in a project that follows Conventional Commits (ADR-0033):
+ * Megalodon commits the work with this message. Chosen per project, not in the agent file.
+ */
+export const commitOutputSchema = z.object({
+  summary: z.string().describe('What you changed, how you verified it, and anything the reviewer should look at.'),
+  commit: z.object({
+    subject: z.string().describe('Conventional Commits subject: `type(scope): summary`, one line, at most 100 characters.'),
+    body: z.string().describe('What changed and why, wrapped at 72 columns; may be empty.'),
+    trailers: z.array(z.string()).describe('Git trailers as `Token: value`; may be empty.'),
+  }),
+});
+export type CommitOutput = z.infer<typeof commitOutputSchema>;
+
 export const outputContracts = {
   plan: planOutputSchema,
   review: reviewOutputSchema,
   triage: triageOutputSchema,
+  commit: commitOutputSchema,
 } as const;
 export type OutputContract = keyof typeof outputContracts;
-export const outputContractSchema = z.enum(['plan', 'review', 'triage']);
+export const outputContractSchema = z.enum(['plan', 'review', 'triage', 'commit']);

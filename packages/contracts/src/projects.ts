@@ -46,6 +46,22 @@ export const policiesSchema = z.object({
 export type Policies = z.infer<typeof policiesSchema>;
 export const defaultPolicies: Policies = policiesSchema.parse({});
 
+/** A git trailer: `Token: value`, e.g. `Signed-off-by: Name <email>`. */
+export const TRAILER = /^[A-Za-z0-9][A-Za-z0-9-]*: \S.*$/;
+
+/**
+ * How Megalodon writes the commits on task branches (CONCEPTS.md §8, ADR-0033). `megalodon`:
+ * `#N <title>` with the agent's reply as the body; `conventional`: the agent's Conventional Commits
+ * message. `hooks`: run the project's git hooks; a failing hook sends the work back to the agent.
+ */
+export const commitsSchema = z.object({
+  style: z.enum(['megalodon', 'conventional']),
+  trailers: z.array(z.string().trim().regex(TRAILER, 'A trailer looks like `Token: value`')),
+  hooks: z.boolean(),
+});
+export type CommitSettings = z.infer<typeof commitsSchema>;
+export const defaultCommits: CommitSettings = { style: 'megalodon', trailers: [], hooks: false };
+
 export const projectSettingsSchema = z
   .object({
     /** The branch tasks start from and merge into; `main` unless the project uses another name. */
@@ -61,6 +77,8 @@ export const projectSettingsSchema = z
     /** At most this many runs of the project at once (CONCEPTS.md §5); null: only the global limit. */
     maxParallel: z.number().int().min(1).max(50).nullable().default(null),
     policies: policiesSchema.default(defaultPolicies),
+    /** Commit conventions of run commits; the default keeps Megalodon's own format. */
+    commits: commitsSchema.default(defaultCommits),
   })
   .refine((s) => new Set(s.checks.map((c) => c.name)).size === s.checks.length, {
     message: 'Check names must be unique',

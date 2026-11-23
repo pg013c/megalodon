@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { runEvents, type PlanOutput, type ReviewOutput } from '@megalodon/contracts';
+import { runEvents, type CommitSettings, type PlanOutput, type ReviewOutput } from '@megalodon/contracts';
 import { describe, expect, it } from 'vitest';
 import type { AgentRunInput } from '../runtime/types';
 import { initRepo, sh } from '../test/repo';
@@ -52,6 +52,19 @@ async function withChecks(server: Awaited<ReturnType<typeof setup>>, maxFixPasse
 }
 
 const agents = (runtime: ScriptedRuntime) => runtime.calls.map((c) => c.agent.id);
+
+async function withCommits(server: Awaited<ReturnType<typeof setup>>, commits: Partial<CommitSettings>, maxFixPasses = server.project.settings.maxFixPasses) {
+  await server.projects.updateSettings(server.project.id, { ...server.project.settings, commits: { ...server.project.settings.commits, ...commits }, maxFixPasses });
+}
+
+/** A pre-commit hook in the project's repository; worktrees share it. */
+function preCommitHook(root: string, script: string) {
+  const path = join(root, '.git', 'hooks', 'pre-commit');
+  writeFileSync(path, `#!/bin/sh\n${script}\n`);
+  chmodSync(path, 0o755);
+}
+
+const lastCommit = (root: string, format: string) => sh(root, 'log', '-1', `--format=${format}`, 'megalodon/1-say-hello').trim();
 
 describe('RunService: one agent', () => {
   it('runs an agent in its own worktree, commits the result and hands the task to the operator', async () => {
@@ -296,6 +309,101 @@ describe('RunService: the feature pipeline', () => {
     expect(runtime.calls[0]?.prompt).toContain('Megalodon was restarted');
     expect(second.runs.details(run.id).run.status).toBe('succeeded');
     expect(second.store.readStream(`run:${run.id}`).map((e) => e.type)).toContain(runEvents.resumed);
+  });
+});
+
+describe('RunService: commit conventions', () => {
+  it('keeps Megalodon commits by default: no commit contract, no hooks', async () => {
+    const { runs, runtime, root, task } = await setup();
+    preCommitHook(root, 'exit 1');
+
+    const run = await runs.start(task.id, { agentId: 'implementer' });
+    await runs.idle();
+
+    expect(runs.details(run.id).run.status).toBe('succeeded');
+    expect(runtime.calls[0]?.agent.output).toBeUndefined();
+    expect(runtime.calls[0]?.prompt).not.toContain('Conventional Commits');
+    expect(lastCommit(root, '%s')).toBe('#1 Say hello');
+    expect(lastCommit(root, '%b')).toBe('Implementer finished.');
+  });
+
+  it("commits with the agent's Conventional Commits message and the project's trailers", async () => {
+    const commit = { subject: 'feat(hello): add greeting', body: 'Adds hello.txt.', trailers: ['Co-authored-by: A <a@x>'] };
+    const server = await setup(() => ({ files: { 'hello.txt': 'hi\n' }, output: { summary: 'Added hello.txt.', commit } }));
+    await withCommits(server, { style: 'conventional', trailers: ['Refs: #1'] });
+    const { runs, runtime, root, task } = server;
+
+    const run = await runs.start(task.id, { agentId: 'implementer' });
+    await runs.idle();
+
+    expect(runs.details(run.id).run.status).toBe('succeeded');
+    expect(runtime.calls[0]?.agent.output).toBe('commit');
+    expect(runtime.calls[0]?.agent.version).toBe(runs.details(run.id).steps[0]?.agentVersion);
+    expect(runtime.calls[0]?.prompt).toContain('Conventional Commits');
+    expect(lastCommit(root, '%s')).toBe('feat(hello): add greeting');
+    expect(lastCommit(root, '%b')).toBe('Adds hello.txt.\n\nCo-authored-by: A <a@x>\nRefs: #1');
+    expect(lastCommit(root, '%B')).not.toContain('Implementer finished.');
+  });
+
+  it.each([
+    ['an invalid subject', { summary: 's', commit: { subject: 'Add stuff', body: '', trailers: [] } }],
+    ['no commit message', undefined],
+  ])('falls back to a safe subject on %s', async (_, output) => {
+    const server = await setup(() => ({ files: { 'hello.txt': 'hi\n' }, output }));
+    await withCommits(server, { style: 'conventional' });
+    const { runs, root, task } = server;
+
+    const run = await runs.start(task.id, { agentId: 'implementer' });
+    await runs.idle();
+
+    expect(runs.details(run.id).steps).toMatchObject([{ status: 'succeeded' }]);
+    expect(lastCommit(root, '%s')).toBe('chore: #1 Say hello');
+    expect(lastCommit(root, '%b')).toBe('');
+  });
+
+  it("runs the project's hooks and sends a failing hook back to the agent", async () => {
+    let calls = 0;
+    const server = await setup(team({ implementer: () => ({ files: { 'hello.txt': ++calls === 1 ? 'hi\n' : 'ok\n' } }) }));
+    await withCommits(server, { hooks: true });
+    const { runs, runtime, root, task, decisions } = server;
+    const marker = join(tempDir(), 'hook-ran');
+    preCommitHook(root, `echo ran >> '${marker}'\ngrep -q ok hello.txt || { echo 'lint: hello.txt must say ok' >&2; exit 1; }`);
+
+    const run = await runs.start(task.id, { pipelineId: 'feature' });
+    await runs.idle();
+
+    const details = runs.details(run.id);
+    expect(details.run.status).toBe('succeeded');
+    expect(details.steps.map((s) => [s.stepId, s.attempt, s.status])).toEqual([
+      ['plan', 1, 'succeeded'],
+      ['implement', 1, 'failed'],
+      ['implement', 2, 'succeeded'],
+      ['checks', 1, 'succeeded'],
+      ['review', 1, 'succeeded'],
+    ]);
+    expect(details.steps[1]?.error).toBe('The commit hooks failed');
+    expect(decisions.queries.forRun(run.id).find((d) => d.kind === 'retry')).toMatchObject({ outcome: 'retry implement', stepId: 'implement' });
+    const retry = runtime.calls[2]!;
+    expect(retry.agent.id).toBe('implementer');
+    expect(retry.resumeSessionId).toBe('session-2');
+    expect(retry.prompt).toContain("The project's git hooks rejected the commit");
+    expect(retry.prompt).toContain('lint: hello.txt must say ok');
+    expect(sh(root, 'show', 'megalodon/1-say-hello:hello.txt')).toBe('ok\n');
+    expect(readFileSync(marker, 'utf8')).toBe('ran\nran\n');
+  });
+
+  it('stops after the fix passes when the hook keeps failing', async () => {
+    const server = await setup(team());
+    await withCommits(server, { hooks: true }, 1);
+    const { runs, root, task, work, decisions } = server;
+    preCommitHook(root, "echo 'lint: no' >&2; exit 1");
+
+    const run = await runs.start(task.id, { pipelineId: 'feature' });
+    await runs.idle();
+
+    expect(runs.details(run.id).run).toMatchObject({ status: 'failed', error: 'Implementer did not pass', commitSha: null });
+    expect(decisions.queries.forRun(run.id).filter((d) => d.kind === 'retry').map((d) => d.outcome)).toEqual(['retry implement', 'stop']);
+    expect(work.details(task.id).task).toMatchObject({ status: 'needs_you', statusReason: 'Implementer did not pass' });
   });
 });
 

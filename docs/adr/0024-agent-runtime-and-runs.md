@@ -1,6 +1,6 @@
 # ADR-0024: Claude runtime settings, run plan, worktrees and recovery
 
-Status: Accepted · Date: 2026-10-26
+Status: Accepted · Date: 2026-10-26 · Partly superseded by ADR-0033
 
 ## Context
 MVP step 3 runs a single agent on a task in its own worktree. It fixes how an agent definition

@@ -42,6 +42,15 @@ export function implementationPrompt(base: string, plan: PlanOutput | null): str
 export const fixPrompt = (feedback: string) =>
   `Your change is not done yet.\n\n${feedback}\n\nFix the code so this is resolved, then finish with a short summary of what you changed.`;
 
+/** For projects that follow Conventional Commits (ADR-0033): the agent writes the message, Megalodon commits. */
+export const commitInstructions = [
+  'This project follows Conventional Commits. Do not commit yourself: Megalodon commits your work when you finish.',
+  'Put the commit message in your structured answer:',
+  '- subject: `type(scope): summary`, one line of at most 100 characters; type is one of feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert; the scope is optional.',
+  '- body: what changed and why, wrapped at 72 columns; may be empty.',
+  '- trailers: git trailers as `Token: value`, only if the change needs them; may be empty.',
+].join('\n');
+
 export function reviewPrompt(base: string, plan: PlanOutput | null, diff: string, checks: string | null): string {
   return [
     base,
