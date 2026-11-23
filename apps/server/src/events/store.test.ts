@@ -96,6 +96,23 @@ describe('EventStore', () => {
     expect(counts()).toEqual(before);
   });
 
+  it('rebuilds only the projections named, leaving the others as they are', () => {
+    const db = openDatabase(join(tempDir(), 'test.db'), [...migrations, counterMigration]);
+    const counter = new CounterProjection();
+    const other = { name: 'other', applied: 0, reset: () => (other.applied = 0), apply: () => void other.applied++ };
+    const store = new EventStore(db, [counter, other]);
+    store.append([event('a', 'task:1'), event('b', 'task:1')]);
+    db.exec("UPDATE test_counts SET count = 99 WHERE stream = 'task:1'");
+    other.applied = 42;
+
+    store.rebuild(['test-counter']);
+
+    expect(db.prepare("SELECT count FROM test_counts WHERE stream = 'task:1'").get()).toEqual({ count: 2 });
+    expect(other.applied).toBe(42);
+    expect(() => store.rebuild(['test-countr'])).toThrow('No projection named test-countr');
+    expect(db.prepare("SELECT count FROM test_counts WHERE stream = 'task:1'").get()).toEqual({ count: 2 });
+  });
+
   it('notifies subscribers after commit only', () => {
     const { store, projection } = setup();
     const heard: number[] = [];

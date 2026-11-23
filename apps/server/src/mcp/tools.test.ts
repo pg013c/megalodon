@@ -28,7 +28,7 @@ describe('MCP', () => {
     const { app } = createTestServer(tempDir());
     const client = await connect(app);
     const names = (await client.listTools()).tools.map((t) => t.name);
-    for (const name of ['list_projects', 'get_project_work', 'create_task', 'add_dependency', 'start_run', 'override_decision', 'merge_task', 'get_needs_you', 'get_overview', 'pause_queue']) {
+    for (const name of ['list_projects', 'get_project_work', 'create_task', 'add_dependency', 'start_run', 'override_decision', 'merge_task', 'get_needs_you', 'get_overview', 'get_scorecard', 'pause_queue']) {
       expect(names).toContain(name);
     }
     expect(names.length).toBeGreaterThanOrEqual(38);

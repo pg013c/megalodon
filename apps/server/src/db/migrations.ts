@@ -265,4 +265,54 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX chat_messages_by_conversation ON chat_messages (conversation_id, seq);
     `,
   },
+  {
+    id: 10,
+    name: 'scorecard',
+    sql: `
+      CREATE TABLE scorecard_runs (
+        run_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        pipeline_id TEXT NOT NULL,
+        pipeline_version TEXT NOT NULL,
+        status TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 1,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        merged INTEGER NOT NULL DEFAULT 0,
+        intervened INTEGER NOT NULL DEFAULT 0,
+        retry_next TEXT,
+        started_at TEXT NOT NULL,
+        ended_at TEXT
+      );
+      CREATE INDEX scorecard_runs_by_project ON scorecard_runs (project_id, started_at);
+      CREATE TABLE scorecard_steps (
+        run_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        project_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        agent_id TEXT,
+        agent_version TEXT,
+        status TEXT NOT NULL,
+        rework INTEGER NOT NULL DEFAULT 0,
+        structured INTEGER NOT NULL DEFAULT 0,
+        review_score REAL,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        duration_ms INTEGER,
+        started_at TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        PRIMARY KEY (run_id, step_id, attempt)
+      );
+      CREATE INDEX scorecard_steps_by_project ON scorecard_steps (project_id, started_at);
+      CREATE TABLE scorecard_decisions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        agent_version TEXT NOT NULL,
+        at TEXT NOT NULL,
+        overridden INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX scorecard_decisions_by_project ON scorecard_decisions (project_id, at);
+    `,
+  },
 ];

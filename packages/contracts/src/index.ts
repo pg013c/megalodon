@@ -12,3 +12,4 @@ export * from './merge';
 export * from './needsYou';
 export * from './overview';
 export * from './chat';
+export * from './scorecard';

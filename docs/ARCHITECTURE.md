@@ -93,7 +93,7 @@ steps:
 ```
 
 Each run records the content hash of every agent and pipeline it used; evaluation groups by these
-versions.
+versions (the scorecard, ADR-0032).
 
 ## 5. Agent runtime
 

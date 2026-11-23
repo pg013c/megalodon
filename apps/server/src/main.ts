@@ -18,6 +18,7 @@ import { agentEnv, RunService } from './runs/service';
 import { ClaudeRuntime } from './runtime/claude';
 import { MergeProjection, MergeQueries } from './merge/projection';
 import { UsageProjection, UsageQueries } from './overview/usage';
+import { ScorecardProjection, ScorecardQueries } from './scorecard/projection';
 import { ChatProjection, ChatQueries } from './chat/projection';
 import { ChatService } from './chat/service';
 import { MergeService } from './merge/service';
@@ -47,7 +48,7 @@ try {
 }
 
 const db = openDatabase(join(config.dataDir, 'megalodon.db'));
-const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection(), new ChatProjection()]);
+const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new ScorecardProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection(), new ChatProjection()]);
 const projectsQueries = new ProjectsQueries(db);
 const projects = new ProjectService(store, projectsQueries);
 const work = new WorkService(store, new WorkQueries(db), projectsQueries);
@@ -105,13 +106,15 @@ const chat = new ChatService({
   dataDir: config.dataDir,
   env,
 });
+// the scorecard (migration 10) came after the events it counts: fill it once from the log
+if (new ScorecardQueries(db).needsBackfill()) store.rebuild(['scorecard']);
 runs.recover();
 triage.recover();
 chat.recover();
 await merges.recover();
 merges.start();
 scheduler.start();
-const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), chat, version: pkg.version, release, port: config.port, webDist: config.webDist });
+const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), scorecard: new ScorecardQueries(db), chat, version: pkg.version, release, port: config.port, webDist: config.webDist });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(`Megalodon ${pkg.version}${release ? ` (${release})` : ''} on http://${config.host}:${info.port} (data: ${config.dataDir})`);

@@ -73,14 +73,20 @@ export class EventStore {
     return row.seq;
   }
 
-  /** Recomputes every projection from the whole log in one transaction. */
-  rebuild(): void {
+  /**
+   * Recomputes projections from the whole log in one transaction: every one, or only those named
+   * (which must not read what the others derive).
+   */
+  rebuild(only?: readonly string[]): void {
+    const unknown = only?.filter((name) => !this.projections.some((p) => p.name === name)) ?? [];
+    if (unknown.length) throw new Error(`No projection named ${unknown.join(', ')}`);
+    const projections = only ? this.projections.filter((p) => only.includes(p.name)) : this.projections;
     transaction(this.db, () => {
-      for (const projection of this.projections) projection.reset(this.db);
+      for (const projection of projections) projection.reset(this.db);
       const rows = this.db.prepare('SELECT * FROM events ORDER BY seq').iterate() as Iterable<unknown>;
       for (const row of rows) {
         const event = toEvent(row as EventRow);
-        for (const projection of this.projections) projection.apply(this.db, event);
+        for (const projection of projections) projection.apply(this.db, event);
       }
     });
   }

@@ -18,6 +18,8 @@ export const mergeEvents = {
 
 export const mergeStream = (projectId: string) => `merge:${projectId}`;
 
+/** The task's branch is in the base; `runId` is the run it came from, null when the task had none. */
+export const mergeCompletedSchema = z.object({ taskId: z.string(), runId: z.string().nullable(), sha: z.string() });
 export const mergeBlockedSchema = z.object({ projectId: z.string(), reason: z.string() });
 export const mergeUnblockedSchema = z.object({ projectId: z.string() });
 
