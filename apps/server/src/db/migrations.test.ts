@@ -29,4 +29,25 @@ describe('migrations', () => {
     expect(after.prepare('SELECT pipeline_id, pipeline_version FROM runs').get()).toEqual({ pipeline_id: 'agent:implementer', pipeline_version: 'unknown' });
     expect(after.prepare('SELECT step_id, attempt, status FROM run_steps').get()).toEqual({ step_id: 'agent', attempt: 1, status: 'succeeded' });
   });
+
+  it('11 closes the scorecard attempts of runs that ended, and only those', () => {
+    const path = join(tempDir(), 'm.db');
+    const before = openDatabase(path, migrations.filter((m) => m.id <= 10));
+    before.exec(`
+      INSERT INTO scorecard_runs (run_id, project_id, pipeline_id, pipeline_version, status, started_at)
+      VALUES ('ended', 'p', 'feature', 'v', 'failed', '2026-11-23T00:00:00Z'), ('live', 'p', 'feature', 'v', 'running', '2026-11-23T00:00:00Z');
+      INSERT INTO scorecard_steps (run_id, step_id, attempt, project_id, kind, status, started_at, seq)
+      VALUES ('ended', 'implement', 1, 'p', 'agent', 'succeeded', '2026-11-23T00:00:00Z', 1),
+             ('ended', 'fix', 1, 'p', 'agent', 'running', '2026-11-23T00:00:00Z', 2),
+             ('live', 'implement', 1, 'p', 'agent', 'running', '2026-11-23T00:00:00Z', 3);
+    `);
+    before.close();
+
+    const after = openDatabase(path);
+    expect(after.prepare('SELECT run_id, step_id, status FROM scorecard_steps ORDER BY seq').all()).toEqual([
+      { run_id: 'ended', step_id: 'implement', status: 'succeeded' },
+      { run_id: 'ended', step_id: 'fix', status: 'cancelled' },
+      { run_id: 'live', step_id: 'implement', status: 'running' },
+    ]);
+  });
 });

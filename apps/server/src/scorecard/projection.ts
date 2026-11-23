@@ -1,7 +1,6 @@
 import {
   decisionEvents,
   decisionMadeSchema,
-  mergeCompletedSchema,
   mergeEvents,
   runCompletedSchema,
   runEvents,
@@ -77,11 +76,15 @@ export class ScorecardProjection implements Projection {
       case runEvents.completed: {
         const r = runCompletedSchema.parse(event.data);
         db.prepare('UPDATE scorecard_runs SET status = ?, ended_at = ? WHERE run_id = ?').run(r.status, event.at, r.runId);
+        // an attempt that never reported its end (the run failed by recover() or a Megalodon error, or
+        // a restart cut the step off and the run never came back to it) ends with its run
+        db.prepare("UPDATE scorecard_steps SET status = 'cancelled' WHERE run_id = ? AND status = 'running'").run(r.runId);
         return;
       }
       case mergeEvents.completed: {
-        const { runId } = mergeCompletedSchema.parse(event.data);
-        if (runId) db.prepare('UPDATE scorecard_runs SET merged = 1 WHERE run_id = ?').run(runId);
+        // older merge.completed payloads may lack runId: the backfill must never throw on them
+        const { runId } = event.data as { runId?: unknown };
+        if (typeof runId === 'string') db.prepare('UPDATE scorecard_runs SET merged = 1 WHERE run_id = ?').run(runId);
         return;
       }
       case decisionEvents.made:
@@ -199,12 +202,14 @@ export class ScorecardQueries {
   constructor(private readonly db: Database) {}
 
   agents(projectId: string | null, since: string | null): AgentStepRow[] {
+    // both averages are over the attempts that reported their end in a step.completed, the only
+    // event that sets duration_ms: attempts still running or closed by their run's end are left out
     return this.db
       .prepare(
         `SELECT agent_id AS agentId, agent_version AS agentVersion, COUNT(DISTINCT run_id) AS runs, COUNT(*) AS steps,
            SUM(status = 'succeeded') AS succeeded, SUM(status IN ('succeeded', 'failed')) AS ended, SUM(rework) AS rework,
            COUNT(review_score) AS reviewed, AVG(review_score) AS reviewScore, SUM(cost_usd) AS costUsd,
-           AVG(CASE WHEN status != 'running' THEN cost_usd END) AS avgCostUsd, AVG(duration_ms) AS avgDurationMs
+           AVG(CASE WHEN duration_ms IS NOT NULL THEN cost_usd END) AS avgCostUsd, AVG(duration_ms) AS avgDurationMs
          FROM scorecard_steps WHERE ${AGENT_STEPS}
          GROUP BY agent_id, agent_version`,
       )

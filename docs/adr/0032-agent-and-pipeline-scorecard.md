@@ -1,6 +1,6 @@
 # ADR-0032: The agent and pipeline scorecard
 
-Status: Accepted · Date: 2026-11-23 · Builds on ADR-0005, ADR-0029
+Status: Accepted · Date: 2026-11-23 · Amended 2026-11-24 (#15) · Builds on ADR-0005, ADR-0029
 
 ## Context
 Every run records the pipeline version it followed and every agent step the agent version it used
@@ -26,10 +26,17 @@ aggregated these versions yet, and "success" and "rework" need one meaning befor
   back to that step (`inputs.next`), after failed checks or a failed review gate. It counts against
   the version that ran the retried step (the implementer in `feature`). Running the reviewer again
   afterwards is not rework.
-- **Restarts**: an attempt that continues its agent session after a Megalodon restart is the same
-  attempt. An attempt that was cut off and started over gets the next attempt number; it replaces
-  the interrupted one (which never completed), so the work counts once, keeps the interrupted
-  attempt's rework flag, and does not raise the run's attempts. A restart is never rework by itself.
+- **Restarts**: an agent attempt that had recorded a session continues that session after a
+  Megalodon restart and keeps its attempt number; it is the same attempt. A restart without a
+  session (an agent step that had not recorded one yet, or a command or check step) starts the step
+  over with the next attempt number. The new attempt replaces the interrupted one, which never
+  completed, so the work counts once and keeps the interrupted attempt's rework flag. An attempt
+  started over does not raise the run's attempts. A restart is never rework by itself.
+- **Attempts that never end**: when a run ends (`run.completed`), its agent attempts still
+  `running` are closed as `cancelled`. This covers a run failed on restart (`recover()`), a
+  Megalodon error, or a step cut off and never continued. So every attempt in `steps` is succeeded,
+  failed or cancelled once its run has finished. Like other cancelled attempts, they stay out of
+  the success rate. Migration 11 applies the same rule to rows built before this change.
 - **Review score**: the `score` of a `review.verdict` made by an agent belongs to the latest
   succeeded agent attempt in the same run that completed without structured output (no output
   contract, i.e. the implementer). Plan and review steps never receive it. The original verdict
@@ -37,12 +44,14 @@ aggregated these versions yet, and "success" and "rework" need one meaning befor
   credits the later one; a review with no such attempt before it credits nobody.
 - **Overrides**: decisions made by an agent (`review.verdict`, `triage`) that a later decision
   superseded (`overrides`), whoever made the later one. Policy decisions (`gate`, `merge`, `retry`, `plan`, `queue`) are not agent decisions.
-- **Averages per agent version**: cost and duration per attempt that ended (succeeded, failed or
-  cancelled); `costUsd` is the total over all its attempts.
+- **Averages per agent version**: `avgCostUsd` and `avgDurationMs` are averaged over the attempts
+  that reported their end in a `step.completed` (succeeded, failed or cancelled). Attempts still
+  running, or closed only by their run's end, have no cost or duration and are left out. `costUsd`
+  is the total over all its attempts.
 - **Pipeline run**: attempts = the most attempts any of its steps took; cost = the sum of step costs;
   duration = the sum of step attempt durations, i.e. working time without time parked at a gate or
-  queued (as agent time in ADR-0029). Averages are over finished runs (succeeded, failed,
-  cancelled).
+  queued (as agent time in ADR-0029). `avgAttempts`, `avgCostUsd` and `avgDurationMs` are per
+  finished run (succeeded, failed, cancelled).
 - **Merged without intervention**: a `merge.completed` names the run and no decision on the run was
   made by the operator (plan approval, gate, verdict or retry override, merging it by hand).
   Share = that count / finished runs. Operator actions that are not decisions (restarting a failed
@@ -59,6 +68,7 @@ aggregated these versions yet, and "success" and "rework" need one meaning befor
 - A run that succeeded but still waits in the merge queue lowers the unattended share until it
   merges.
 - Costs are the SDK's estimates (ADR-0029), not a bill.
+- The cost of an attempt cut off without a `step.completed` is unknown and counts as 0 in totals.
 - `overridden` counts any decision that supersedes an agent decision. Today only the operator's
   override (`DecisionService.override`) sets `overrides`; if a system or agent re-decision ever does,
   it would count as an override too, because the projection does not check who superseded it.
