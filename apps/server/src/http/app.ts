@@ -17,6 +17,8 @@ import { createMcpServer } from '../mcp/tools';
 import { NeedsYouService } from '../needsYou/service';
 import { OverviewService } from '../overview/service';
 import type { UsageQueries } from '../overview/usage';
+import type { ScorecardQueries } from '../scorecard/projection';
+import { ScorecardService } from '../scorecard/service';
 import type { Scheduler } from '../scheduler/service';
 import type { TriageService } from '../triage/service';
 import type { WorkService } from '../work/service';
@@ -25,6 +27,7 @@ import { chatRoutes } from './chat';
 import { projectRoutes } from './projects';
 import { queueRoutes } from './queue';
 import { runRoutes } from './runs';
+import { scorecardRoutes } from './scorecard';
 import { workRoutes } from './work';
 
 export interface AppDeps {
@@ -38,6 +41,7 @@ export interface AppDeps {
   scheduler: Scheduler;
   merges: MergeService;
   usage: UsageQueries;
+  scorecard: ScorecardQueries;
   chat: ChatService;
   version: string;
   /** Release tag the server runs from, or null in dev. */
@@ -49,7 +53,7 @@ export interface AppDeps {
   keepAliveMs?: number;
 }
 
-export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage, chat, version, release, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
+export function createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage, scorecard: scorecardQueries, chat, version, release, port, webDist, keepAliveMs = 15_000 }: AppDeps): Hono {
   const app = new Hono();
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 
@@ -78,9 +82,10 @@ export function createApp({ store, projects, work, runs, library, decisions, tri
     if (!period.success) throw new AppError(400, 'INVALID_REQUEST', 'period must be one of 24h, 7d, 30d, all');
     return c.json<Overview>(overview.view(period.data));
   });
+  const scorecard = new ScorecardService({ queries: scorecardQueries, library });
   // MCP over streamable HTTP, stateless: a fresh server per request (ADR-0030)
   app.all('/mcp', async (c) => {
-    const server = createMcpServer({ version, projects, work, runs, decisions, triage, scheduler, merges, needsYou, overview, library });
+    const server = createMcpServer({ version, projects, work, runs, decisions, triage, scheduler, merges, needsYou, overview, scorecard, library });
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     await server.connect(transport);
     return transport.handleRequest(c.req.raw);
@@ -92,6 +97,7 @@ export function createApp({ store, projects, work, runs, library, decisions, tri
   runRoutes(app, runs, library);
   decisionRoutes(app, decisions);
   queueRoutes(app, work, triage, scheduler, merges, needsYou);
+  scorecardRoutes(app, scorecard, projects);
 
   // Live event feed from now on. A client that sends Last-Event-ID (a reconnecting EventSource) or
   // ?after=<seq> first receives what it missed.

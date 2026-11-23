@@ -9,6 +9,7 @@ import type { NeedsYouService } from '../needsYou/service';
 import type { OverviewService } from '../overview/service';
 import type { ProjectService } from '../projects/service';
 import type { RunService } from '../runs/service';
+import type { ScorecardService } from '../scorecard/service';
 import type { Scheduler } from '../scheduler/service';
 import type { TriageService } from '../triage/service';
 import type { WorkService } from '../work/service';
@@ -24,6 +25,7 @@ export interface McpDeps {
   merges: MergeService;
   needsYou: NeedsYouService;
   overview: OverviewService;
+  scorecard: ScorecardService;
   library: Library;
 }
 
@@ -91,6 +93,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
   tool('get_needs_you', 'Everything waiting for the operator across projects, oldest first.', {}, () => deps.needsYou.view());
   tool('get_queue', 'The global queue: slots, pause, running and waiting tasks.', {}, () => scheduler.view());
   tool('get_overview', 'Every project at a glance, with spend for a period.', { period: periodSchema.default('7d') }, ({ period }) => deps.overview.view(period));
+  tool(
+    'get_scorecard',
+    'Success, rework, review score, cost, time and overrides per agent and pipeline version.',
+    { projectId: z.string().optional().describe('Project id; all projects when left out.'), period: periodSchema.default('30d') },
+    ({ projectId, period }) => deps.scorecard.view(period, projectId ? projects.get(projectId).id : null),
+  );
   tool('list_agents', 'Agents in the library.', {}, () => deps.library.agents().map(({ instructions: _, ...agent }) => agent));
   tool('list_pipelines', 'Pipelines in the library.', {}, () => deps.library.pipelines());
   tool('list_branches', "A project's branches with ahead/behind the base.", { projectId: projectRef }, ({ projectId }) => projects.branches(project(projectId).id));

@@ -13,6 +13,7 @@ import { RunService } from '../runs/service';
 import type { AgentRuntime } from '../runtime/types';
 import { MergeProjection, MergeQueries } from '../merge/projection';
 import { UsageProjection, UsageQueries } from '../overview/usage';
+import { ScorecardProjection, ScorecardQueries } from '../scorecard/projection';
 import { ChatProjection, ChatQueries } from '../chat/projection';
 import { ChatService } from '../chat/service';
 import { MergeService } from '../merge/service';
@@ -31,7 +32,7 @@ const builtinLibrary = fileURLToPath(new URL('../../../../library', import.meta.
 /** The real store, projections, services and app over a database in `dir`; agents are scripted. */
 export function createTestServer(dir: string, runtime: AgentRuntime = new ScriptedRuntime(), options: { autoTriage?: boolean; now?: () => Date; release?: string | null } = {}) {
   const db = openDatabase(join(dir, 'test.db'));
-  const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection(), new ChatProjection()]);
+  const store = new EventStore(db, [new ProjectsProjection(), new WorkProjection(), new RunsProjection(), new DecisionsProjection(), new ScorecardProjection(), new SchedulerProjection(), new MergeProjection(), new UsageProjection(), new ChatProjection()]);
   const projectsQueries = new ProjectsQueries(db);
   const projects = new ProjectService(store, projectsQueries);
   const work = new WorkService(store, new WorkQueries(db), projectsQueries);
@@ -86,6 +87,6 @@ export function createTestServer(dir: string, runtime: AgentRuntime = new Script
     dataDir: dir,
     env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
   });
-  const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), chat, version: '0.0.0-test', release: options.release ?? null, port: PORT, webDist: null, keepAliveMs: 50 });
+  const app = createApp({ store, projects, work, runs, library, decisions, triage, scheduler, merges, usage: new UsageQueries(db), scorecard: new ScorecardQueries(db), chat, version: '0.0.0-test', release: options.release ?? null, port: PORT, webDist: null, keepAliveMs: 50 });
   return { db, store, projects, work, runs, library, decisions, triage, scheduler, merges, chat, app };
 }

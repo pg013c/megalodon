@@ -8,6 +8,10 @@ import type { UsageQueries } from './usage';
 
 const PERIOD_MS: Record<Exclude<Period, 'all'>, number> = { '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000 };
 
+/** Where a period that ends `now` starts (ISO), or null for all time. */
+export const periodStart = (period: Period, now: Date): string | null =>
+  period === 'all' ? null : new Date(now.getTime() - PERIOD_MS[period]).toISOString();
+
 export interface OverviewDeps {
   projects: ProjectsQueries;
   work: WorkQueries;
@@ -23,8 +27,7 @@ export class OverviewService {
   constructor(private readonly deps: OverviewDeps) {}
 
   view(period: Period): Overview {
-    const now = this.deps.now?.() ?? new Date();
-    const since = period === 'all' ? null : new Date(now.getTime() - PERIOD_MS[period]).toISOString();
+    const since = periodStart(period, this.deps.now?.() ?? new Date());
     const needs = this.deps.needsYou.view();
     const blocks = new Map(needs.mergeBlocked.map((b) => [b.projectId, b.reason]));
 
