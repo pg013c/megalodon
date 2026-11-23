@@ -93,7 +93,8 @@ steps:
 ```
 
 Each run records the content hash of every agent and pipeline it used; evaluation groups by these
-versions (the scorecard, ADR-0032).
+versions (the scorecard, ADR-0032), shown on Agents & Pipelines → Scorecard with the runs behind
+each row (`GET /api/scorecard/runs`, ADR-0033).
 
 ## 5. Agent runtime
 

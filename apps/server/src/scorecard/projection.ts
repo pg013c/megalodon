@@ -167,7 +167,35 @@ export interface PipelineRow {
   avgDurationMs: number | null;
 }
 
+export interface RunRow {
+  runId: string;
+  taskId: string | null;
+  taskNumber: number | null;
+  taskTitle: string | null;
+  projectId: string;
+  projectName: string | null;
+  status: string;
+  startedAt: string;
+  attempts: number;
+  rework: number;
+  reviewScore: number | null;
+  costUsd: number;
+  durationMs: number | null;
+  merged: number;
+}
+
 const FINISHED = "status IN ('succeeded', 'failed', 'cancelled')";
+// the rows each list counts: the runs behind a row share them, so the two cannot disagree (ADR-0033)
+const AGENT_STEPS = "kind = 'agent' AND agent_version IS NOT NULL AND (? IS NULL OR project_id = ?) AND started_at >= ?";
+const DECISIONS = '(? IS NULL OR project_id = ?) AND at >= ?';
+const PIPELINE_RUNS = '(? IS NULL OR project_id = ?) AND started_at >= ?';
+/** The runs behind one row, newest first. */
+const RUNS_LIMIT = 100;
+const RUN_DETAILS = `LEFT JOIN runs r ON r.id = picked.runId
+  LEFT JOIN tasks t ON t.id = r.task_id
+  LEFT JOIN projects p ON p.id = picked.projectId`;
+const RUN_COLUMNS = `picked.runId, r.task_id AS taskId, t.number AS taskNumber, t.title AS taskTitle, picked.projectId, p.name AS projectName,
+  picked.status, picked.startedAt, picked.attempts, picked.rework, picked.reviewScore, picked.costUsd, picked.durationMs, picked.merged`;
 
 /** The scorecard grouped by version, for a project (or all) since `since` (ISO, or ever). */
 export class ScorecardQueries {
@@ -182,7 +210,7 @@ export class ScorecardQueries {
            SUM(status = 'succeeded') AS succeeded, SUM(status IN ('succeeded', 'failed')) AS ended, SUM(rework) AS rework,
            COUNT(review_score) AS reviewed, AVG(review_score) AS reviewScore, SUM(cost_usd) AS costUsd,
            AVG(CASE WHEN duration_ms IS NOT NULL THEN cost_usd END) AS avgCostUsd, AVG(duration_ms) AS avgDurationMs
-         FROM scorecard_steps WHERE kind = 'agent' AND agent_version IS NOT NULL AND (? IS NULL OR project_id = ?) AND started_at >= ?
+         FROM scorecard_steps WHERE ${AGENT_STEPS}
          GROUP BY agent_id, agent_version`,
       )
       .all(projectId, projectId, since ?? '') as unknown as AgentStepRow[];
@@ -192,7 +220,7 @@ export class ScorecardQueries {
     return this.db
       .prepare(
         `SELECT agent_id AS agentId, agent_version AS agentVersion, COUNT(*) AS decisions, SUM(overridden) AS overridden
-         FROM scorecard_decisions WHERE (? IS NULL OR project_id = ?) AND at >= ?
+         FROM scorecard_decisions WHERE ${DECISIONS}
          GROUP BY agent_id, agent_version`,
       )
       .all(projectId, projectId, since ?? '') as unknown as AgentDecisionRow[];
@@ -205,10 +233,50 @@ export class ScorecardQueries {
            SUM(merged) AS merged, SUM(merged AND NOT intervened) AS mergedUnattended,
            AVG(CASE WHEN ${FINISHED} THEN attempts END) AS avgAttempts, SUM(cost_usd) AS costUsd,
            AVG(CASE WHEN ${FINISHED} THEN cost_usd END) AS avgCostUsd, AVG(CASE WHEN ${FINISHED} THEN duration_ms END) AS avgDurationMs
-         FROM scorecard_runs WHERE (? IS NULL OR project_id = ?) AND started_at >= ?
+         FROM scorecard_runs WHERE ${PIPELINE_RUNS}
          GROUP BY pipeline_id, pipeline_version`,
       )
       .all(projectId, projectId, since ?? '') as unknown as PipelineRow[];
+  }
+
+  /** The runs an agent version's steps in the period belong to, with only those steps counted. */
+  agentRuns(agentId: string, agentVersion: string, projectId: string | null, since: string | null): { total: number; runs: RunRow[] } {
+    const where = `${AGENT_STEPS} AND agent_id = ? AND agent_version = ?`;
+    const params = [projectId, projectId, since ?? '', agentId, agentVersion];
+    const total = this.db.prepare(`SELECT COUNT(DISTINCT run_id) AS n FROM scorecard_steps WHERE ${where}`).get(...params) as { n: number };
+    const runs = this.db
+      .prepare(
+        `WITH steps AS (
+           SELECT run_id, COUNT(*) AS attempts, SUM(rework) AS rework, AVG(review_score) AS reviewScore, SUM(cost_usd) AS costUsd,
+             SUM(duration_ms) AS durationMs, MIN(started_at) AS startedAt
+           FROM scorecard_steps WHERE ${where} GROUP BY run_id),
+         picked AS (
+           SELECT steps.run_id AS runId, sr.project_id AS projectId, sr.status, steps.startedAt, steps.attempts, steps.rework, steps.reviewScore,
+             steps.costUsd, steps.durationMs, sr.merged
+           FROM steps JOIN scorecard_runs sr ON sr.run_id = steps.run_id)
+         SELECT ${RUN_COLUMNS} FROM picked ${RUN_DETAILS}
+         ORDER BY picked.startedAt DESC LIMIT ${RUNS_LIMIT}`,
+      )
+      .all(...params) as unknown as RunRow[];
+    return { total: total.n, runs };
+  }
+
+  /** The runs of a pipeline version started in the period. */
+  pipelineRuns(pipelineId: string, pipelineVersion: string, projectId: string | null, since: string | null): { total: number; runs: RunRow[] } {
+    const where = `${PIPELINE_RUNS} AND pipeline_id = ? AND pipeline_version = ?`;
+    const params = [projectId, projectId, since ?? '', pipelineId, pipelineVersion];
+    const total = this.db.prepare(`SELECT COUNT(*) AS n FROM scorecard_runs WHERE ${where}`).get(...params) as { n: number };
+    const runs = this.db
+      .prepare(
+        `WITH picked AS (
+           SELECT run_id AS runId, project_id AS projectId, status, started_at AS startedAt, attempts, 0 AS rework, NULL AS reviewScore,
+             cost_usd AS costUsd, duration_ms AS durationMs, merged
+           FROM scorecard_runs WHERE ${where})
+         SELECT ${RUN_COLUMNS} FROM picked ${RUN_DETAILS}
+         ORDER BY picked.startedAt DESC LIMIT ${RUNS_LIMIT}`,
+      )
+      .all(...params) as unknown as RunRow[];
+    return { total: total.n, runs };
   }
 
   /** Runs or agent decisions in the log but not in the scorecard: it came after them (migration 10). */
