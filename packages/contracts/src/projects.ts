@@ -54,7 +54,7 @@ export type ConventionalType = (typeof conventionalTypes)[number];
 export const TRAILER = /^[A-Za-z0-9][A-Za-z0-9-]*: \S.*$/;
 
 /**
- * How Megalodon writes the commits on task branches (CONCEPTS.md §8, ADR-0033). `megalodon`:
+ * How Megalodon writes the commits on task branches (CONCEPTS.md §8, ADR-0035). `megalodon`:
  * `#N <title>` with the agent's reply as the body; `conventional`: the agent's Conventional Commits
  * message. `hooks`: run the project's git hooks; a failing hook sends the work back to the agent.
  */

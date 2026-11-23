@@ -140,7 +140,7 @@ dependency makes a task `ready`).
 ## 8. Commits
 
 Megalodon commits a run's work after every agent step that changed files; agents never commit
-themselves. Each project chooses how (ADR-0033):
+themselves. Each project chooses how (ADR-0035):
 
 | Setting | `megalodon` (default) | `conventional` |
 |---|---|---|

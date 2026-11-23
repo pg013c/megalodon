@@ -25,8 +25,10 @@ import { removeWorktree, worktreeExists } from '../runs/git';
 import type { RunsQueries } from '../runs/projection';
 import type { AgentRuntime } from '../runtime/types';
 import type { WorkService } from '../work/service';
+import { adrClash, ADR_DIR } from './adrNumbers';
 import {
   abortMerge,
+  addedFiles,
   branchTip,
   concludeMerge,
   currentBranch,
@@ -37,6 +39,7 @@ import {
   merge,
   mergeHead,
   predictConflicts,
+  treeFiles,
   unmergedFiles,
 } from './git';
 import type { MergeQueries } from './projection';
@@ -214,7 +217,8 @@ export class MergeService {
     }
     if (!worktreeExists(run.worktreePath)) return { ok: false, reason: `The worktree of ${run.branch} is gone` };
 
-    if (!(await isAncestor(project.path, base, tip))) {
+    const moved = !(await isAncestor(project.path, base, tip));
+    if (moved) {
       const predicted = await predictConflicts(project.path, base, tip);
       this.event(task, mergeEvents.updated, { runId: run.id, conflicts: predicted });
       const conflicts = await merge(run.worktreePath, base, mergeSubject(project.settings.commits.style, `${project.settings.baseBranch} into ${run.branch}`));
@@ -225,6 +229,11 @@ export class MergeService {
           return resolved;
         }
       }
+    }
+    // two ADRs with one number: the branch renumbers its own (ADR-0036)
+    const clash = adrClash(await treeFiles(run.worktreePath, ADR_DIR), await addedFiles(run.worktreePath, base));
+    if (clash) return { ok: false, reason: clash };
+    if (moved) {
       // the base moved: what was checked before is not what will be merged now
       const checked = await this.recheck(project, run);
       if (!checked.ok) return checked;

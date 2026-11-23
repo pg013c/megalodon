@@ -1,6 +1,6 @@
 # ADR-0027: The merge queue
 
-Status: Accepted · Date: 2026-10-26 · Builds on ADR-0008 and ADR-0014 · Partly superseded by ADR-0033
+Status: Accepted · Date: 2026-10-26 · Builds on ADR-0008 and ADR-0014 · Partly superseded by ADR-0035 · Extended by ADR-0036
 
 ## Context
 MVP step 6 closes the loop: work that passed its pipeline lands on the base branch without the
