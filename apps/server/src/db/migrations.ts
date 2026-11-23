@@ -315,4 +315,13 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX scorecard_decisions_by_project ON scorecard_decisions (project_id, at);
     `,
   },
+  {
+    // what the projection now does on run.completed, for rows built before it did (ADR-0032)
+    id: 11,
+    name: 'scorecard: close attempts of ended runs',
+    sql: `
+      UPDATE scorecard_steps SET status = 'cancelled'
+      WHERE status = 'running' AND run_id IN (SELECT run_id FROM scorecard_runs WHERE status IN ('succeeded', 'failed', 'cancelled'));
+    `,
+  },
 ];

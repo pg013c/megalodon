@@ -10,7 +10,7 @@ export const agentScoreSchema = z.object({
   /** The version in the library now. */
   current: z.boolean(),
   runs: z.number().int(),
-  /** Attempts of its agent steps. */
+  /** Every attempt of its agent steps, including those closed only by the end of their run. */
   steps: z.number().int(),
   succeeded: z.number().int(),
   /** Succeeded of the attempts that succeeded or failed; null when none ended. */
@@ -22,8 +22,15 @@ export const agentScoreSchema = z.object({
   reviewScore: z.number().nullable(),
   /** Cost of all its attempts in the period. */
   costUsd: z.number(),
-  /** Per attempt that ended (succeeded, failed or cancelled); null when none ended. */
+  /**
+   * Per attempt that reported its end (succeeded, failed or cancelled, with its cost and duration);
+   * attempts still running or closed only by the end of their run are left out; null when there are none.
+   */
   avgCostUsd: z.number().nullable(),
+  /**
+   * Per attempt that reported its end (succeeded, failed or cancelled, with its cost and duration);
+   * attempts still running or closed only by the end of their run are left out; null when there are none.
+   */
   avgDurationMs: z.number().nullable(),
   /** Decisions it made, and how many of them a later decision overrode. */
   decisions: z.number().int(),
@@ -49,8 +56,12 @@ export const pipelineScoreSchema = z.object({
   avgAttempts: z.number().nullable(),
   /** Cost of all its runs in the period. */
   costUsd: z.number(),
-  /** Per finished run: cost, and working time (the sum of its step durations). */
+  /** Per finished run (succeeded, failed or cancelled): the sum of its step attempt costs; null when none finished. */
   avgCostUsd: z.number().nullable(),
+  /**
+   * Per finished run: working time, the sum of its step attempt durations (no time parked at a gate
+   * or queued); null when none finished.
+   */
   avgDurationMs: z.number().nullable(),
 });
 export type PipelineScore = z.infer<typeof pipelineScoreSchema>;
