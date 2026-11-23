@@ -39,7 +39,7 @@ export const triageOutputSchema = z.object({
 export type TriageOutput = z.infer<typeof triageOutputSchema>;
 
 /**
- * What an implementing agent answers in a project that follows Conventional Commits (ADR-0033):
+ * What an implementing agent answers in a project that follows Conventional Commits (ADR-0035):
  * Megalodon commits the work with this message. Chosen per project, not in the agent file.
  */
 export const commitOutputSchema = z.object({

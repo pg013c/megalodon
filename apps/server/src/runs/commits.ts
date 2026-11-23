@@ -2,7 +2,7 @@ import { TRAILER, conventionalTypes, type CommitOutput, type CommitSettings, typ
 
 /**
  * The messages of the commits Megalodon writes on task branches, per the project's commit
- * conventions (ADR-0033).
+ * conventions (ADR-0035).
  */
 
 const CONVENTIONAL_SUBJECT = new RegExp(`^(${conventionalTypes.join('|')})(\\([^()\\r\\n]+\\))?!?: \\S[^\\r\\n]*$`);

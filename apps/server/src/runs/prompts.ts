@@ -42,7 +42,7 @@ export function implementationPrompt(base: string, plan: PlanOutput | null): str
 export const fixPrompt = (feedback: string) =>
   `Your change is not done yet.\n\n${feedback}\n\nFix the code so this is resolved, then finish with a short summary of what you changed.`;
 
-/** For projects that follow Conventional Commits (ADR-0033): the agent writes the message, Megalodon commits. */
+/** For projects that follow Conventional Commits (ADR-0035): the agent writes the message, Megalodon commits. */
 export const commitInstructions = [
   'This project follows Conventional Commits. Do not commit yourself: Megalodon commits your work when you finish.',
   'Put the commit message in your structured answer:',

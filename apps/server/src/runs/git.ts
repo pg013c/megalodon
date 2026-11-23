@@ -34,7 +34,7 @@ export const worktreeExists = (path: string) => existsSync(path);
 
 /**
  * Commits everything in the worktree; null when there is nothing to commit. With `hooks`, the
- * project's git hooks run with `env` and a failing hook throws `GitError` (ADR-0033).
+ * project's git hooks run with `env` and a failing hook throws `GitError` (ADR-0035).
  */
 export async function commitAll(cwd: string, message: string, options: { hooks?: boolean; env?: Record<string, string> } = {}): Promise<string | null> {
   await git(cwd, ['add', '-A']);

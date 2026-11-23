@@ -158,7 +158,9 @@ One serial queue per project (ADR-0027):
    otherwise it waits for the operator's **Merge**.
 2. If the base moved: predict conflicts without touching any checkout (`git merge-tree`), merge
    the base into the task's branch in its worktree, let the resolver agent settle conflicts (two
-   attempts), then run setup and checks again.
+   attempts). Then, whether or not the base moved, fail the task if the branch adds a
+   `docs/adr/NNNN-*.md` whose number another file already has (ADR-0036). If the base moved, run
+   setup and checks again.
 3. Check the operator's checkout: on `main`, no merge in progress, no uncommitted tracked changes.
    Otherwise the project's merges wait and the queue panel says why.
 4. `git merge --no-ff` in the operator's checkout (ADR-0014); remove the worktree and branch; the

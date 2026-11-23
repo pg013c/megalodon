@@ -79,6 +79,17 @@ export async function changedFiles(cwd: string, base: string, head = 'HEAD'): Pr
   return (await git(cwd, ['diff', '--name-only', `${base}...${head}`])).split('\n').filter(Boolean);
 }
 
+/** Files the branch added since it left `base`; a renamed file counts as added under its new name. */
+export async function addedFiles(cwd: string, base: string, head = 'HEAD'): Promise<string[]> {
+  const out = await git(cwd, ['diff', '--name-only', '--no-renames', '--diff-filter=A', '-z', `${base}...${head}`]);
+  return out.split('\0').filter(Boolean);
+}
+
+/** The files directly in `dir` at `ref`. */
+export async function treeFiles(cwd: string, dir: string, ref = 'HEAD'): Promise<string[]> {
+  return (await git(cwd, ['ls-tree', '--name-only', '-z', ref, '--', `${dir}/`])).split('\0').filter(Boolean);
+}
+
 export async function deleteBranch(root: string, branch: string): Promise<void> {
   await git(root, ['branch', '-D', branch]);
 }

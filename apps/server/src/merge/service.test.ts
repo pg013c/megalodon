@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReviewOutput } from '@megalodon/contracts';
 import { describe, expect, it } from 'vitest';
@@ -86,6 +86,57 @@ describe('MergeService', () => {
       'merge: #2 b.txt',
       'merge: main into megalodon/2-b-txt',
     ]);
+  });
+
+  it('fails a branch whose ADR number the base already took', async () => {
+    const { merges, root, finished, status, work } = await setup();
+    mkdirSync(join(root, 'docs/adr'), { recursive: true });
+    writeFileSync(join(root, 'docs/adr/README.md'), '# ADRs\n');
+    sh(root, 'add', '-A');
+    sh(root, 'commit', '-q', '-m', 'adr dir');
+    const first = await finished('docs/adr/0001-first.md');
+    const second = await finished('docs/adr/0001-second.md');
+
+    await merges.tick();
+
+    expect([status(first.id), status(second.id)]).toEqual(['done', 'needs_you']);
+    expect(work.queries.task(second.id)?.statusReason).toMatch(/docs\/adr\/0001-second\.md takes ADR-0001, which docs\/adr\/0001-first\.md already has.*ADR-0002/);
+    expect(existsSync(join(root, 'docs/adr/0001-second.md'))).toBe(false);
+  });
+
+  it('fails a branch that renumbers an ADR onto a number the base already took', async () => {
+    const { merges, root, finished, status, work } = await setup({
+      implementer: (input) => {
+        sh(input.cwd, 'mv', 'docs/adr/0002-old.md', 'docs/adr/0001-renamed.md');
+        return {};
+      },
+    });
+    mkdirSync(join(root, 'docs/adr'), { recursive: true });
+    writeFileSync(join(root, 'docs/adr/0001-base.md'), '# ADR-0001: Base\n\nThe decision already on the base.\n');
+    writeFileSync(join(root, 'docs/adr/0002-old.md'), '# ADR-0002: Old\n\nA decision the branch renumbers, long enough to be found as a rename.\n');
+    sh(root, 'add', '-A');
+    sh(root, 'commit', '-q', '-m', 'adrs');
+    const task = await finished('renumber');
+
+    await merges.tick();
+
+    expect(status(task.id)).toBe('needs_you');
+    expect(work.queries.task(task.id)?.statusReason).toMatch(/^docs\/adr\/0001-renamed\.md takes ADR-0001, which docs\/adr\/0001-base\.md already has/);
+    expect(existsSync(join(root, 'docs/adr/0001-renamed.md'))).toBe(false);
+  });
+
+  it('merges a branch whose ADR takes a new number', async () => {
+    const { merges, root, finished, status } = await setup();
+    mkdirSync(join(root, 'docs/adr'), { recursive: true });
+    writeFileSync(join(root, 'docs/adr/0001-base.md'), '# ADR-0001\n');
+    sh(root, 'add', '-A');
+    sh(root, 'commit', '-q', '-m', 'adr');
+    const task = await finished('docs/adr/0002-x.md');
+
+    await merges.tick();
+
+    expect(status(task.id)).toBe('done');
+    expect(existsSync(join(root, 'docs/adr/0002-x.md'))).toBe(true);
   });
 
   it('lets the resolver settle conflicts with the base', async () => {

@@ -1,4 +1,4 @@
-# ADR-0033: Project commit conventions
+# ADR-0035: Project commit conventions
 
 Status: Accepted · Date: 2026-11-24 · Builds on ADR-0024, ADR-0027 · Supersedes the commit
 message of ADR-0024 and the merge message of ADR-0027

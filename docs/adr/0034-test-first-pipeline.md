@@ -1,6 +1,6 @@
 # ADR-0034: Test-first pipeline
 
-Status: Accepted · Date: 2026-11-24 · Builds on ADR-0005, ADR-0025, ADR-0033
+Status: Accepted · Date: 2026-11-24 · Builds on ADR-0005, ADR-0025, ADR-0035
 
 ## Context
 Some projects require a red commit with failing tests and then a green commit with code that does
@@ -39,7 +39,7 @@ only the project's named checks (ADR-0015).
   (`Changed locked test files: …` or `Changed files outside the test paths: …`), commits nothing,
   and retries the same step in the agent's session with the paths, the globs and
   `git checkout <base> -- <path>` to restore them (which also undoes the agent's own commits), up
-  to `maxFixPasses`, like a failing hook (ADR-0033). Restoring the files clears the violation.
+  to `maxFixPasses`, like a failing hook (ADR-0035). Restoring the files clears the violation.
 - **Refused starts.** `buildPlan` copies `testPaths` into guarded steps and checks the pipeline fits
   the project before any worktree exists: a step naming a missing check fails with
   `CHECK_NOT_FOUND`, an `expect: fail` step without a required check too, and a guarded step

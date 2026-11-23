@@ -419,7 +419,7 @@ export class RunService {
     resumeSessionId: string | null,
   ): Promise<StepOutcome> {
     const agent = this.deps.library.agent(step.agentId);
-    // under Conventional Commits an agent without its own contract answers with its commit message (ADR-0033)
+    // under Conventional Commits an agent without its own contract answers with its commit message (ADR-0035)
     const contract: OutputContract | undefined = agent.output ?? (project.settings.commits.style === 'conventional' ? 'commit' : undefined);
     // the test-path guard measures changes against the worktree as the step found it, pinned across a
     // restart and the step's own retries, so a commit the agent makes itself cannot move it (ADR-0034)
@@ -465,7 +465,7 @@ export class RunService {
         if (!parsed.success) return fail('failed', `answered without a valid ${contract} (${parsed.error.issues[0]?.message ?? 'invalid'})`);
         output = parsed.data;
       }
-      // the commit message lives in git, not in the step's output: that stays the agent contract's (ADR-0032, ADR-0033)
+      // the commit message lives in git, not in the step's output: that stays the agent contract's (ADR-0032, ADR-0035)
       const result = event.result?.trim() ? event.result : (commit?.summary ?? event.result);
 
       // the test-path guard runs before the commit, so a retry starts from the same base (ADR-0034)
