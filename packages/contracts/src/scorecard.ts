@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { periodSchema } from './overview';
+import { runStatusSchema } from './runs';
 
 /** How one agent version did in a period (ADR-0032). */
 export const agentScoreSchema = z.object({
@@ -67,3 +68,50 @@ export const scorecardQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
   period: periodSchema.default('30d'),
 });
+
+/** One run behind a scorecard row: for an agent, only its steps in the period count (ADR-0033). */
+export const scorecardRunSchema = z.object({
+  runId: z.string(),
+  /** Null when the run or its task is no longer in the read model. */
+  taskId: z.string().nullable(),
+  taskNumber: z.number().int().nullable(),
+  taskTitle: z.string().nullable(),
+  projectId: z.string(),
+  /** Null when the project has been disconnected. */
+  projectName: z.string().nullable(),
+  status: runStatusSchema,
+  startedAt: z.string(),
+  /** For an agent, its step attempts in the run; for a pipeline, the most attempts any step took. */
+  attempts: z.number().int(),
+  rework: z.number().int(),
+  reviewScore: z.number().nullable(),
+  costUsd: z.number(),
+  durationMs: z.number().int().nullable(),
+  merged: z.boolean(),
+});
+export type ScorecardRun = z.infer<typeof scorecardRunSchema>;
+
+export const scorecardRunsSchema = z.object({
+  /** Every run behind the row; `runs` holds the latest 100. */
+  total: z.number().int(),
+  runs: z.array(scorecardRunSchema),
+});
+export type ScorecardRuns = z.infer<typeof scorecardRunsSchema>;
+
+/** The runs behind one agent version or one pipeline version, with the scorecard's filters. */
+export const scorecardRunsQuerySchema = scorecardQuerySchema
+  .extend({
+    agentId: z.string().min(1).optional(),
+    agentVersion: z.string().min(1).optional(),
+    pipelineId: z.string().min(1).optional(),
+    pipelineVersion: z.string().min(1).optional(),
+  })
+  .refine(
+    (q) => {
+      const agent = q.agentId !== undefined && q.agentVersion !== undefined;
+      const pipeline = q.pipelineId !== undefined && q.pipelineVersion !== undefined;
+      const given = [q.agentId, q.agentVersion, q.pipelineId, q.pipelineVersion].filter((v) => v !== undefined).length;
+      return (agent || pipeline) && given === 2;
+    },
+    { message: 'give agentId and agentVersion, or pipelineId and pipelineVersion', path: ['target'] },
+  );

@@ -1,18 +1,52 @@
 import type { Agent, Pipeline } from '@megalodon/contracts';
 import { useState } from 'react';
+import { NavLink, Route, Routes } from 'react-router';
 import { useAgents, usePipelines } from '../../data/runs';
 import { ErrorText } from '../../ui/Field';
 import { Drawer } from '../../ui/Overlay';
+import { ScorecardView } from './ScorecardView';
 
-/** The agents Megalodon can run. Pipelines and evaluations join them in later steps. */
+const tabs = [
+  { to: '/library', label: 'Library', end: true },
+  { to: '/library/scorecard', label: 'Scorecard', end: false },
+];
+
+/** The agents and pipelines Megalodon can run, and how each version of them did. */
 export function LibraryScreen() {
+  return (
+    <section>
+      <h1 className="text-3xl font-semibold tracking-tight">Agents & Pipelines</h1>
+      <nav className="mt-6 inline-flex rounded-full bg-line/60 p-0.5">
+        {tabs.map((tab) => (
+          <NavLink
+            key={tab.to}
+            to={tab.to}
+            end={tab.end}
+            className={({ isActive }) =>
+              `rounded-full px-4 py-1 text-[13px] ${isActive ? 'bg-surface font-medium shadow-sm' : 'text-muted hover:text-ink'}`
+            }
+          >
+            {tab.label}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="mt-8">
+        <Routes>
+          <Route index element={<LibraryCatalog />} />
+          <Route path="scorecard" element={<ScorecardView />} />
+        </Routes>
+      </div>
+    </section>
+  );
+}
+
+function LibraryCatalog() {
   const agents = useAgents();
   const pipelines = usePipelines();
   const [open, setOpen] = useState<Agent | null>(null);
   return (
-    <section>
-      <h1 className="text-3xl font-semibold tracking-tight">Agents & Pipelines</h1>
-      <p className="mt-2 max-w-xl text-[15px] text-muted">
+    <div>
+      <p className="max-w-xl text-[15px] text-muted">
         Agents are Markdown files: built-in ones ship with Megalodon, your own live in the library folder of the data directory and win on
         the same name.
       </p>
@@ -54,7 +88,7 @@ export function LibraryScreen() {
       <Drawer open={open !== null} onOpenChange={(o) => !o && setOpen(null)} title={open?.name ?? ''} description={open ? `${open.id}.md` : undefined}>
         <pre className="whitespace-pre-wrap font-sans text-[14px] leading-6">{open?.instructions}</pre>
       </Drawer>
-    </section>
+    </div>
   );
 }
 

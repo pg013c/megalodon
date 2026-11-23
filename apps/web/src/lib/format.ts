@@ -51,6 +51,12 @@ export function duration(ms: number | null): string {
 
 export const cost = (usd: number) => (usd === 0 ? '$0' : usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`);
 
+/** 0.857 → 86%; — when there is nothing to divide. */
+export const percent = (ratio: number | null) => (ratio === null ? '—' : `${Math.round(ratio * 100)}%`);
+
+/** A review score with one decimal, or —. */
+export const score = (n: number | null) => (n === null ? '—' : n.toFixed(1));
+
 /** 950, 12.3k, 1.2M. */
 export function tokens(n: number): string {
   if (n < 1000) return String(n);

@@ -1,7 +1,10 @@
-import type { AgentScore, Period, PipelineScore, Scorecard } from '@megalodon/contracts';
+import { runStatusSchema, type AgentScore, type Period, type PipelineScore, type Scorecard, type ScorecardRuns } from '@megalodon/contracts';
 import type { Library } from '../library/library';
 import { periodStart } from '../overview/service';
 import type { ScorecardQueries } from './projection';
+
+/** One agent version or one pipeline version. */
+export type ScorecardTarget = { kind: 'agent'; id: string; version: string } | { kind: 'pipeline'; id: string; version: string };
 
 export interface ScorecardDeps {
   queries: ScorecardQueries;
@@ -88,5 +91,15 @@ export class ScorecardService {
       agents: [...scores.values()].sort((a, b) => a.agentId.localeCompare(b.agentId) || Number(b.current) - Number(a.current) || b.steps - a.steps || b.decisions - a.decisions),
       pipelines: pipelineScores.sort((a, b) => a.pipelineId.localeCompare(b.pipelineId) || Number(b.current) - Number(a.current) || b.runs - a.runs),
     };
+  }
+
+  /** The runs behind one row of `view`, with the same filters (ADR-0033). */
+  runs(target: ScorecardTarget, period: Period, projectId: string | null): ScorecardRuns {
+    const since = periodStart(period, this.deps.now?.() ?? new Date());
+    const { total, runs } =
+      target.kind === 'agent'
+        ? this.deps.queries.agentRuns(target.id, target.version, projectId, since)
+        : this.deps.queries.pipelineRuns(target.id, target.version, projectId, since);
+    return { total, runs: runs.map((r) => ({ ...r, status: runStatusSchema.parse(r.status), merged: r.merged === 1 })) };
   }
 }
