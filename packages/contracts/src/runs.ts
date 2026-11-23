@@ -180,6 +180,8 @@ export const stepStartedSchema = z.object({
   name: z.string(),
   agentId: z.string().nullable(),
   agentVersion: z.string().nullable(),
+  /** A step guarded by test paths: the tree its changes are measured against (ADR-0034). */
+  base: z.string().nullable().default(null),
 });
 export const stepSessionSchema = z.object({ runId: z.string(), stepId: z.string(), attempt: z.number().int().positive().default(1), sessionId: z.string() });
 export const stepMessageSchema = z.object({ runId: z.string(), stepId: z.string(), attempt: z.number().int().positive().default(1), message: runMessageSchema });

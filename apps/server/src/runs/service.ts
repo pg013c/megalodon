@@ -10,6 +10,7 @@ import {
   zeroUsage,
   type Actor,
   type Agent,
+  type Check,
   type CommitOutput,
   type NewEvent,
   type OutputContract,
@@ -32,11 +33,11 @@ import type { Library } from '../library/library';
 import type { ProjectsQueries } from '../projects/projection';
 import type { AgentRuntime } from '../runtime/types';
 import type { WorkService } from '../work/service';
-import { runCommand } from './command';
+import { runCommand, type CommandResult } from './command';
 import { runCommitMessage } from './commits';
 import { changedFiles, globToRegExp } from '../merge/git';
 import { touchesOverlap } from '../work/readiness';
-import { addWorktree, branchDiff, commitAll, head, revParse, stepChanges, taskBranch, worktreeExists } from './git';
+import { addWorktree, branchDiff, commitAll, head, revParse, stepChanges, taskBranch, treeSnapshot, worktreeExists } from './git';
 import { buildPlan, runPosition, type RunPosition } from './plan';
 import type { RunsQueries } from './projection';
 import {
@@ -372,13 +373,12 @@ export class RunService {
 
   /**
    * Runs the project's checks; required ones decide. Megalodon runs them, not an agent (ADR-0015).
-   * With `expect: fail`, the required checks must fail instead, e.g. new tests before the code (ADR-0034).
+   * With `expect: fail` the required checks must fail instead, e.g. new tests before the code (ADR-0034).
    */
   private async checkStep(run: Run, step: Extract<PlannedStep, { kind: 'check' }>, attempt: number, index: number, active: Active): Promise<StepOutcome> {
-    if (step.expect === 'fail') return this.failingCheckStep(run, step, attempt, index, active);
     this.stepStarted(run.id, step.stepId, attempt, index, 'check', step.name, null, null);
     const started = Date.now();
-    const failures: string[] = [];
+    const wrong: CheckVerdict[] = [];
     const lines: string[] = [];
     for (const check of step.checks) {
       const result = await this.command(run, step.stepId, check.command, check.timeoutSec * 1000, active);
@@ -388,68 +388,22 @@ export class RunService {
         }
         return { kind: 'stopped' };
       }
-      const passed = result.exitCode === 0;
-      const why = passed ? 'passed' : result.timedOut ? `timed out after ${check.timeoutSec}s` : `failed (exit code ${result.exitCode})`;
-      this.message(run.id, step.stepId, attempt, { kind: 'output', text: `$ ${check.command}  — ${why}\n${result.tail}` });
-      lines.push(`- ${check.name}: ${why}${check.required ? '' : ' (optional)'}`);
-      if (!passed && check.required) failures.push(`${check.name} (\`${check.command}\`) ${why}:\n${result.tail.slice(-3_000)}`);
+      const verdict = checkVerdict(check, result, step.expect);
+      this.message(run.id, step.stepId, attempt, { kind: 'output', text: `$ ${check.command}  — ${verdict.why}\n${result.tail}` });
+      lines.push(`- ${check.name}: ${verdict.why}${check.required ? '' : ' (optional)'}`);
+      if (!verdict.ok && check.required) wrong.push(verdict);
     }
     const report = lines.join('\n') || '- (no checks configured)';
-    const done = completed(run.id, step.stepId, attempt, failures.length ? 'failed' : 'succeeded', zeroUsage, Date.now() - started, null, report, failures.length ? `${failures.length} required ${failures.length === 1 ? 'check' : 'checks'} failed` : null);
-    if (!failures.length) {
-      this.append(run.id, runEvents.stepCompleted, done);
-      return { kind: 'passed' };
-    }
-    return {
-      kind: 'rejected',
-      feedback: `The project's checks failed:\n\n${failures.join('\n\n')}`,
-      events: [{ type: runEvents.stepCompleted, stream: runStream(run.id), data: done, actor: SYSTEM }],
-    };
-  }
-
-  /** A check step that passes when every required check fails, for its own reason, not a timeout. */
-  private async failingCheckStep(run: Run, step: Extract<PlannedStep, { kind: 'check' }>, attempt: number, index: number, active: Active): Promise<StepOutcome> {
-    this.stepStarted(run.id, step.stepId, attempt, index, 'check', step.name, null, null);
-    const started = Date.now();
-    const passed: string[] = [];
-    const timedOut: string[] = [];
-    const outputs: string[] = [];
-    const lines: string[] = [];
-    for (const check of step.checks) {
-      const result = await this.command(run, step.stepId, check.command, check.timeoutSec * 1000, active);
-      if (active.stop) {
-        if (active.stop !== 'shutdown') {
-          this.append(run.id, runEvents.stepCompleted, completed(run.id, step.stepId, attempt, 'cancelled', zeroUsage, Date.now() - started, null, null, 'Stopped'));
-        }
-        return { kind: 'stopped' };
-      }
-      const why =
-        result.exitCode === 0 ? 'passed (expected to fail)' : result.timedOut ? `timed out after ${check.timeoutSec}s` : `failed as expected (exit code ${result.exitCode})`;
-      this.message(run.id, step.stepId, attempt, { kind: 'output', text: `$ ${check.command}  — ${why}\n${result.tail}` });
-      lines.push(`- ${check.name}: ${why}${check.required ? '' : ' (optional)'}`);
-      if (!check.required) continue;
-      if (result.exitCode === 0) passed.push(check.name);
-      else if (result.timedOut) timedOut.push(check.name);
-      else continue;
-      outputs.push(`${check.name} (\`${check.command}\`) ${why}:\n${result.tail.slice(-3_000)}`);
-    }
-    const report = lines.join('\n') || '- (no checks configured)';
-    const error = passed.length
-      ? `${passed.join(', ')} passed; expected ${passed.length === 1 ? 'it' : 'them'} to fail`
-      : timedOut.length
-        ? `${timedOut.join(', ')} timed out; expected ${timedOut.length === 1 ? 'it' : 'them'} to fail`
-        : null;
+    const error = wrong.length ? checkError(step.expect, wrong) : null;
     const done = completed(run.id, step.stepId, attempt, error ? 'failed' : 'succeeded', zeroUsage, Date.now() - started, null, report, error);
     if (!error) {
       this.append(run.id, runEvents.stepCompleted, done);
       return { kind: 'passed' };
     }
-    const reason = passed.length
-      ? 'The tests pass, but this step expects them to fail: the new tests must fail against the current code, for the reason the planned change will fix. Write tests that exercise the new behaviour.'
-      : 'The tests timed out instead of failing. Make the new tests fail quickly against the current code, for the reason the planned change will fix.';
+    const details = wrong.map((v) => `${v.check.name} (\`${v.check.command}\`) ${v.why}:\n${v.tail.slice(-3_000)}`).join('\n\n');
     return {
       kind: 'rejected',
-      feedback: `${reason}\n\n${outputs.join('\n\n')}`,
+      feedback: `${checkFeedback(step.expect, wrong)}\n\n${details}`,
       events: [{ type: runEvents.stepCompleted, stream: runStream(run.id), data: done, actor: SYSTEM }],
     };
   }
@@ -467,9 +421,12 @@ export class RunService {
     const agent = this.deps.library.agent(step.agentId);
     // under Conventional Commits an agent without its own contract answers with its commit message (ADR-0033)
     const contract: OutputContract | undefined = agent.output ?? (project.settings.commits.style === 'conventional' ? 'commit' : undefined);
-    if (!resumeSessionId) this.stepStarted(run.id, step.stepId, attempt, position.index, 'agent', step.name, agent.id, agent.version);
-    // Megalodon commits only when a step ends, so HEAD is still where this step started, also on resume
-    const stepBase = step.tests ? await head(run.worktreePath) : null;
+    // the test-path guard measures changes against the worktree as the step found it, pinned across a
+    // restart and the step's own retries, so a commit the agent makes itself cannot move it (ADR-0034)
+    const stepBase = !step.tests
+      ? null
+      : ((resumeSessionId ? position.bases.get(step.stepId) : position.retryBase) ?? (await treeSnapshot(run.worktreePath)));
+    if (!resumeSessionId) this.stepStarted(run.id, step.stepId, attempt, position.index, 'agent', step.name, agent.id, agent.version, stepBase);
     const { prompt, session } = resumeSessionId
       ? { prompt: resumePrompt, session: resumeSessionId }
       : await this.agentPrompt(run, step, agent, contract, position, task, project);
@@ -525,7 +482,7 @@ export class RunService {
           };
           return {
             kind: 'rejected',
-            feedback: testPathFeedback(step.tests, violations, step.testPaths),
+            feedback: testPathFeedback(step.tests, violations, step.testPaths, stepBase),
             events: [failed],
             rule: { retry: step.stepId, max: project.settings.maxFixPasses },
           };
@@ -702,8 +659,18 @@ export class RunService {
     else this.deps.work.transition(task.id, 'failed', ending.error, SYSTEM);
   }
 
-  private stepStarted(runId: string, stepId: string, attempt: number, index: number, kind: 'command' | 'agent' | 'check', name: string, agentId: string | null, agentVersion: string | null) {
-    this.append(runId, runEvents.stepStarted, { runId, stepId, attempt, index, kind, name, agentId, agentVersion });
+  private stepStarted(
+    runId: string,
+    stepId: string,
+    attempt: number,
+    index: number,
+    kind: 'command' | 'agent' | 'check',
+    name: string,
+    agentId: string | null,
+    agentVersion: string | null,
+    base: string | null = null,
+  ) {
+    this.append(runId, runEvents.stepStarted, { runId, stepId, attempt, index, kind, name, agentId, agentVersion, ...(base ? { base } : {}) });
   }
 
   private message(runId: string, stepId: string, attempt: number, message: RunMessage) {
@@ -765,12 +732,49 @@ function completed(
 }
 
 /** What the agent gets back when its step changed files the test-path guard forbids. */
-function testPathFeedback(mode: 'only' | 'locked', files: string[], globs: string[]): string {
+function testPathFeedback(mode: 'only' | 'locked', files: string[], globs: string[], base: string): string {
   const list = files.map((f) => `- ${f}`).join('\n');
   const patterns = globs.map((g) => `\`${g}\``).join(', ');
+  const restore = `Restore them to how they were when this step started with \`git checkout ${base} -- <path>\` (this also undoes changes you committed), and delete the files you added.`;
   return mode === 'locked'
-    ? `This step changed test files, which are locked (they match ${patterns}):\n${list}\n\nRestore them (\`git checkout HEAD -- <path>\`; delete test files you added) and make the tests pass by changing the code only.`
-    : `This step writes tests only, but it changed files outside the test paths (${patterns}):\n${list}\n\nRestore them (\`git checkout HEAD -- <path>\`; delete files you added) and keep only the tests; a later step writes the code.`;
+    ? `This step changed test files, which are locked (they match ${patterns}):\n${list}\n\n${restore} Make the tests pass by changing the code only.`
+    : `This step writes tests only, but it changed files outside the test paths (${patterns}):\n${list}\n\n${restore} Keep only the tests; a later step writes the code.`;
+}
+
+/** How one check ended, judged against what its step expects. */
+interface CheckVerdict {
+  check: Check;
+  ok: boolean;
+  /** `failed` is a non-zero exit; a timeout or a signal is neither a pass nor a failure of the tests. */
+  outcome: 'passed' | 'failed' | 'timed_out' | 'killed';
+  why: string;
+  tail: string;
+}
+
+function checkVerdict(check: Check, result: CommandResult, expect: 'pass' | 'fail'): CheckVerdict {
+  const outcome = result.exitCode === 0 ? 'passed' : result.timedOut ? 'timed_out' : result.exitCode === null ? 'killed' : 'failed';
+  const why = {
+    passed: expect === 'pass' ? 'passed' : 'passed (expected to fail)',
+    failed: expect === 'pass' ? `failed (exit code ${result.exitCode})` : `failed as expected (exit code ${result.exitCode})`,
+    timed_out: `timed out after ${check.timeoutSec}s`,
+    killed: 'killed by a signal',
+  }[outcome];
+  return { check, ok: outcome === (expect === 'pass' ? 'passed' : 'failed'), outcome, why, tail: result.tail };
+}
+
+function checkError(expect: 'pass' | 'fail', wrong: CheckVerdict[]): string {
+  if (expect === 'pass') return `${wrong.length} required ${wrong.length === 1 ? 'check' : 'checks'} failed`;
+  const passed = wrong.filter((v) => v.outcome === 'passed');
+  const names = (passed.length ? passed : wrong).map((v) => v.check.name);
+  const them = names.length === 1 ? 'it' : 'them';
+  return `${names.join(', ')} ${passed.length ? 'passed' : 'did not finish'}; expected ${them} to fail`;
+}
+
+function checkFeedback(expect: 'pass' | 'fail', wrong: CheckVerdict[]): string {
+  if (expect === 'pass') return "The project's checks failed:";
+  return wrong.some((v) => v.outcome === 'passed')
+    ? 'The tests pass, but this step expects them to fail: the new tests must fail against the current code, for the reason the planned change will fix. Write tests that exercise the new behaviour.'
+    : 'The tests did not finish (they timed out or were killed) instead of failing. Make the new tests fail quickly against the current code, for the reason the planned change will fix.';
 }
 
 const stopped = (active: Active): Ending => ({

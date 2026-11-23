@@ -20,19 +20,26 @@ only the project's named checks (ADR-0015).
 - **Check-step options.** `only: [names]` runs only those project checks; `expect: pass | fail`
   (default `pass`). With `expect: fail` the step passes only when every required selected check
   exits non-zero; a passing check rejects the step (`test passed; expected it to fail`) with
-  feedback that the new tests must fail against the current code; a timeout rejects it with its own
-  reason. A check step stands in for the task's "command step": it reuses check timeouts, logs,
+  feedback that the new tests must fail against the current code; a timeout or a kill by a signal
+  is not a failure of the tests and rejects it too (`test did not finish; expected it to fail`).
+  Both expectations share one check loop and differ only in the verdict. A check step stands in for the task's "command step": it reuses check timeouts, logs,
   reports and `onFail` retries, and the project names its test command once, as the `test` check.
 - **Agent-step options.** `tests: only | locked` guards the step's changes against `testPaths`;
   `commitTypes` restricts the commit type under Conventional Commits.
-- **The guard.** Before the step's commit, Megalodon stages the worktree and lists every path
-  changed since the HEAD captured when the step started (committed or not, untracked, deleted, both
-  sides of a rename; the index is reset afterwards). `locked` rejects any path matching a test glob;
-  `only` rejects any path matching none. A violation fails the step (`Changed locked test files: …`
-  or `Changed files outside the test paths: …`), commits nothing, and retries the same step in the
-  agent's session with the paths, the globs and how to restore them, up to `maxFixPasses`, like a
-  failing hook (ADR-0033). Because nothing was committed, the retry is measured from the same base,
-  so restoring the files clears the violation.
+- **The guard's base.** When a guarded step starts, Megalodon snapshots the worktree as a tree
+  object (`git add -A`, `git write-tree`, then the index is reset), so files earlier steps left
+  behind (caches, coverage) are not blamed on it. The tree id is recorded in the attempt's
+  `step.started` event (`base`). A resumed attempt and a retry of the step by itself (a guard or
+  hook failure) reuse it; a retry from another step (checks, review) takes a new snapshot, because
+  the step's previous attempt passed the guard and was committed. Agents are told not to commit,
+  but one that does cannot move the base.
+- **The guard.** Before the step's commit, Megalodon lists every path that differs from the base
+  (committed or not, untracked, deleted, both sides of a rename). `locked` rejects any path
+  matching a test glob; `only` rejects any path matching none. A violation fails the step
+  (`Changed locked test files: …` or `Changed files outside the test paths: …`), commits nothing,
+  and retries the same step in the agent's session with the paths, the globs and
+  `git checkout <base> -- <path>` to restore them (which also undoes the agent's own commits), up
+  to `maxFixPasses`, like a failing hook (ADR-0033). Restoring the files clears the violation.
 - **Refused starts.** `buildPlan` copies `testPaths` into guarded steps and checks the pipeline fits
   the project before any worktree exists: a step naming a missing check fails with
   `CHECK_NOT_FOUND`, an `expect: fail` step without a required check too, and a guarded step
@@ -59,4 +66,8 @@ only the project's named checks (ADR-0015).
   operator fixes the test.
 - A guard violation leaves an uncommitted worktree; a run that runs out of retries goes to *Needs
   you* with it.
+- A test change the agent committed itself and then restored stays in the branch history (a commit
+  and its revert); the branch's content is what the guard checked.
+- The base tree is not referenced by any ref; `git gc` prunes such objects only after two weeks, far
+  longer than a step.
 - The stricter `**/` may let a sensitive-path glob that relied on the loose match stop matching.

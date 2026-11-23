@@ -508,6 +508,71 @@ describe('RunService: the test-first pipeline', () => {
     expect(sh(root, 'show', 'megalodon/1-say-hello:hello.test.sh')).toBe(TEST);
   });
 
+  it('keeps the guard on a test change the agent committed itself, across retries', async () => {
+    const selfCommit: Script = { ...green({ 'hello.txt': 'hi\n', 'hello.test.sh': 'true\n' }), commit: 'wip' };
+    const server = await setup(team({ implementer: implementer(red(), selfCommit, green({}), green({ 'hello.test.sh': TEST })) }));
+    await withTestFirst(server);
+    const { runs, runtime, root, task } = server;
+
+    const run = await runs.start(task.id, { pipelineId: 'test-first' });
+    await runs.idle();
+
+    const details = runs.details(run.id);
+    expect(details.run.status).toBe('succeeded');
+    expect(details.steps.filter((s) => s.stepId === 'green').map((s) => [s.attempt, s.status, s.error])).toEqual([
+      [1, 'failed', 'Changed locked test files: hello.test.sh'],
+      [2, 'failed', 'Changed locked test files: hello.test.sh'],
+      [3, 'succeeded', null],
+    ]);
+    // the feedback restores from the step's base, which also undoes the agent's own commit
+    expect(runtime.calls[3]?.prompt).toMatch(/git checkout [0-9a-f]{40} -- <path>/);
+    expect(sh(root, 'show', 'megalodon/1-say-hello:hello.test.sh')).toBe(TEST);
+  });
+
+  it('keeps the guard base of a guarded step resumed after a restart', async () => {
+    const dir = tempDir();
+    const first = await setup(team({ implementer: implementer(red(), { hang: true }) }), dir);
+    await withTestFirst(first, 0);
+    const run = await first.runs.start(first.task.id, { pipelineId: 'test-first' });
+    while (!first.runs.details(run.id).steps.find((s) => s.stepId === 'green')?.sessionId) await new Promise((r) => setTimeout(r, 5));
+    await first.runs.shutdown();
+    // before the restart the agent edited a test and committed it
+    const worktree = first.runs.details(run.id).run.worktreePath;
+    writeFileSync(join(worktree, 'hello.test.sh'), 'true\n');
+    sh(worktree, 'commit', '-q', '-am', 'wip');
+
+    const second = createTestServer(dir, new ScriptedRuntime(team()));
+    second.runs.recover();
+    await second.runs.idle();
+
+    const details = second.runs.details(run.id);
+    expect(details.steps.find((s) => s.stepId === 'green')).toMatchObject({ attempt: 1, status: 'failed', error: 'Changed locked test files: hello.test.sh' });
+    expect(details.run).toMatchObject({ status: 'failed', error: 'Green: code did not pass' });
+  });
+
+  it('sends tests that time out back to the red step', async () => {
+    const server = await setup(team({ implementer: implementer(red({ 'hello.test.sh': 'sleep 5\n' }), red(), green()) }));
+    await withTestFirst(server);
+    await server.projects.updateSettings(server.project.id, {
+      ...server.projects.get(server.project.id).settings,
+      checks: [{ name: 'test', command: 'sh hello.test.sh', required: true, timeoutSec: 1 }],
+    });
+    const { runs, runtime, task } = server;
+
+    const run = await runs.start(task.id, { pipelineId: 'test-first' });
+    await runs.idle();
+
+    const details = runs.details(run.id);
+    expect(details.run.status).toBe('succeeded');
+    expect(details.steps.find((s) => s.stepId === 'red-check')).toMatchObject({
+      attempt: 1,
+      status: 'failed',
+      error: 'test did not finish; expected it to fail',
+      result: '- test: timed out after 1s',
+    });
+    expect(runtime.calls[2]?.prompt).toContain('The tests did not finish');
+  });
+
   it('fails a red step that writes code', async () => {
     const writesCode = red({ 'hello.test.sh': TEST, 'src.txt': 'code\n' });
     const server = await setup(team({ implementer: implementer(writesCode, writesCode) }));

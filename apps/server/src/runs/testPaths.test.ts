@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { initRepo, sh, write } from '../test/repo';
 import { useTempDir } from '../test/tempDir';
-import { head, stepChanges } from './git';
+import { head, stepChanges, treeSnapshot } from './git';
 import { testPathViolations } from './testPaths';
 
 const tempDir = useTempDir();
@@ -43,6 +43,20 @@ describe('stepChanges', () => {
     expect(changed.sort()).toEqual(['src/a.ts', 'src/committed.ts', 'src/moved.ts', 'tests/gone.ts', 'tests/new.test.ts', 'tests/old.ts']);
     expect(testPathViolations(changed, globs, 'locked').sort()).toEqual(['tests/gone.ts', 'tests/new.test.ts', 'tests/old.ts']);
     expect(sh(root, 'diff', '--cached', '--name-only')).toBe('');
+  });
+
+  it('measures from a snapshot, so leftovers of earlier steps and the agent\'s own commits are told apart', async () => {
+    const root = initRepo(join(tempDir(), 'r'), { 'tests/a.ts': 'a\n' });
+    write(root, { 'tests/__cache__/a.pyc': 'leftover of a check\n' });
+    const base = await treeSnapshot(root);
+    expect(sh(root, 'status', '--porcelain')).toBe('?? tests/__cache__/\n');
+
+    writeFileSync(join(root, 'tests/a.ts'), 'changed\n');
+    sh(root, 'commit', '-q', '-am', 'agent committed by itself');
+    expect(await stepChanges(root, base)).toEqual(['tests/a.ts']);
+
+    sh(root, 'checkout', base, '--', 'tests/a.ts');
+    expect(await stepChanges(root, base)).toEqual([]);
   });
 
   it('finds nothing once the step restored what it changed', async () => {

@@ -77,6 +77,10 @@ export interface RunPosition {
   feedback: string | null;
   /** The latest report of each check step. */
   reports: Map<string, string>;
+  /** The latest base of each step guarded by test paths, as its attempt recorded it. */
+  bases: Map<string, string>;
+  /** When the step about to run retries itself: the base of its failed attempt, kept for this one. */
+  retryBase: string | null;
 }
 
 export function runPosition(events: readonly StoredEvent[], plan: readonly PlannedStep[]): RunPosition {
@@ -90,6 +94,8 @@ export function runPosition(events: readonly StoredEvent[], plan: readonly Plann
     sessions: new Map(),
     feedback: null,
     reports: new Map(),
+    bases: new Map(),
+    retryBase: null,
   };
   for (const event of events) {
     const data = event.data as Record<string, unknown>;
@@ -99,6 +105,8 @@ export function runPosition(events: readonly StoredEvent[], plan: readonly Plann
       position.index = indexOf(stepId);
       position.attempts.set(stepId, attempt);
       position.inProgress = { stepId, attempt, sessionId: null };
+      if (typeof data.base === 'string') position.bases.set(stepId, data.base);
+      position.retryBase = null;
     } else if (event.type === runEvents.stepSession) {
       position.sessions.set(String(data.stepId), String(data.sessionId));
       const current = position.inProgress;
@@ -120,6 +128,7 @@ export function runPosition(events: readonly StoredEvent[], plan: readonly Plann
         position.retries.set(decision.stepId, (position.retries.get(decision.stepId) ?? 0) + 1);
         position.index = indexOf(next);
         position.feedback = typeof decision.inputs.feedback === 'string' ? decision.inputs.feedback : null;
+        position.retryBase = decision.stepId === next ? (position.bases.get(next) ?? null) : null;
       }
     }
   }

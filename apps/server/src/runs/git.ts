@@ -58,13 +58,26 @@ export async function branchDiff(cwd: string, baseSha: string): Promise<string> 
 }
 
 /**
- * Every path the worktree changed since `sinceSha`, committed or not: new, untracked, deleted, and
- * both sides of a rename. The index is left as it was.
+ * The worktree as a tree object, uncommitted and untracked files included (ignored ones are not),
+ * for `stepChanges`. The index is reset to HEAD afterwards.
  */
-export async function stepChanges(cwd: string, sinceSha: string): Promise<string[]> {
+export async function treeSnapshot(cwd: string): Promise<string> {
   await git(cwd, ['add', '-A']);
   try {
-    const out = await git(cwd, ['diff', '--cached', '--name-only', '--no-renames', '-z', sinceSha]);
+    return (await git(cwd, ['write-tree'])).trim();
+  } finally {
+    await git(cwd, ['reset', '-q']);
+  }
+}
+
+/**
+ * Every path the worktree changed since `base` (a commit or a `treeSnapshot`), committed or not:
+ * new, untracked, deleted, and both sides of a rename. The index is reset to HEAD afterwards.
+ */
+export async function stepChanges(cwd: string, base: string): Promise<string[]> {
+  await git(cwd, ['add', '-A']);
+  try {
+    const out = await git(cwd, ['diff', '--cached', '--name-only', '--no-renames', '-z', base]);
     return out.split('\0').filter(Boolean);
   } finally {
     await git(cwd, ['reset', '-q']);
