@@ -98,9 +98,12 @@ export function globToRegExp(glob: string): RegExp {
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i]!;
     if (c === '*' && glob[i + 1] === '*') {
-      pattern += '.*';
       i++;
-      if (glob[i + 1] === '/') i++;
+      // `**/` is zero or more whole directories, so `**/tests/**` does not match `contests/`
+      if (glob[i + 1] === '/') {
+        pattern += '(?:.*/)?';
+        i++;
+      } else pattern += '.*';
     } else if (c === '*') pattern += '[^/]*';
     else if (c === '?') pattern += '[^/]';
     else pattern += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');

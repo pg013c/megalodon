@@ -28,7 +28,8 @@ what waits for you, can read every decision an agent made, and can overturn any 
   queue runs work across projects in order (ADR-0006, ADR-0007, ADR-0026).
 - **Agent pipelines as files.** Agents are Markdown files and pipelines are YAML (plan → implement
   → checks → review, with retry loops and gates). Built-in definitions ship in `library/`; your own
-  override them by name (ADR-0005).
+  override them by name (ADR-0005). A built-in `test-first` pipeline commits failing tests first
+  (red), then the code with the tests locked (green) (ADR-0034).
 - **Isolated worktrees.** Every run gets its own git worktree and branch. Agents never write to
   your checkout (ADR-0008, ADR-0024).
 - **Merge queue with risk policies.** Finished branches are updated, re-checked and merged one at
@@ -99,7 +100,7 @@ instance that made it; it is upgraded with a new tag (ADR-0013).
 - [`docs/CONCEPTS.md`](docs/CONCEPTS.md): vocabulary, statuses, dependencies and queue rules.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): how it is built.
 - [`docs/MVP.md`](docs/MVP.md): the build plan, step by step.
-- [`docs/adr/`](docs/adr/): 31 architecture decision records.
+- [`docs/adr/`](docs/adr/): 35 architecture decision records.
 
 ## Running
 

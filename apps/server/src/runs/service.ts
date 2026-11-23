@@ -36,10 +36,22 @@ import { runCommand } from './command';
 import { runCommitMessage } from './commits';
 import { changedFiles, globToRegExp } from '../merge/git';
 import { touchesOverlap } from '../work/readiness';
-import { addWorktree, branchDiff, commitAll, head, revParse, taskBranch, worktreeExists } from './git';
+import { addWorktree, branchDiff, commitAll, head, revParse, stepChanges, taskBranch, worktreeExists } from './git';
 import { buildPlan, runPosition, type RunPosition } from './plan';
 import type { RunsQueries } from './projection';
-import { commitInstructions, fixPrompt, implementationPrompt, planningPrompt, resumePrompt, reviewFeedback, reviewPrompt, taskPrompt } from './prompts';
+import {
+  commitInstructions,
+  commitTypeInstructions,
+  fixPrompt,
+  implementationPrompt,
+  planningPrompt,
+  resumePrompt,
+  reviewFeedback,
+  reviewPrompt,
+  taskPrompt,
+  testStepInstructions,
+} from './prompts';
+import { testPathViolations } from './testPaths';
 
 const OPERATOR: Actor = { kind: 'operator' };
 const SYSTEM: Actor = { kind: 'system' };
@@ -358,8 +370,12 @@ export class RunService {
     return { kind: 'passed' };
   }
 
-  /** Runs the project's checks; required ones decide. Megalodon runs them, not an agent (ADR-0015). */
+  /**
+   * Runs the project's checks; required ones decide. Megalodon runs them, not an agent (ADR-0015).
+   * With `expect: fail`, the required checks must fail instead, e.g. new tests before the code (ADR-0034).
+   */
   private async checkStep(run: Run, step: Extract<PlannedStep, { kind: 'check' }>, attempt: number, index: number, active: Active): Promise<StepOutcome> {
+    if (step.expect === 'fail') return this.failingCheckStep(run, step, attempt, index, active);
     this.stepStarted(run.id, step.stepId, attempt, index, 'check', step.name, null, null);
     const started = Date.now();
     const failures: string[] = [];
@@ -391,6 +407,53 @@ export class RunService {
     };
   }
 
+  /** A check step that passes when every required check fails, for its own reason, not a timeout. */
+  private async failingCheckStep(run: Run, step: Extract<PlannedStep, { kind: 'check' }>, attempt: number, index: number, active: Active): Promise<StepOutcome> {
+    this.stepStarted(run.id, step.stepId, attempt, index, 'check', step.name, null, null);
+    const started = Date.now();
+    const passed: string[] = [];
+    const timedOut: string[] = [];
+    const outputs: string[] = [];
+    const lines: string[] = [];
+    for (const check of step.checks) {
+      const result = await this.command(run, step.stepId, check.command, check.timeoutSec * 1000, active);
+      if (active.stop) {
+        if (active.stop !== 'shutdown') {
+          this.append(run.id, runEvents.stepCompleted, completed(run.id, step.stepId, attempt, 'cancelled', zeroUsage, Date.now() - started, null, null, 'Stopped'));
+        }
+        return { kind: 'stopped' };
+      }
+      const why =
+        result.exitCode === 0 ? 'passed (expected to fail)' : result.timedOut ? `timed out after ${check.timeoutSec}s` : `failed as expected (exit code ${result.exitCode})`;
+      this.message(run.id, step.stepId, attempt, { kind: 'output', text: `$ ${check.command}  — ${why}\n${result.tail}` });
+      lines.push(`- ${check.name}: ${why}${check.required ? '' : ' (optional)'}`);
+      if (!check.required) continue;
+      if (result.exitCode === 0) passed.push(check.name);
+      else if (result.timedOut) timedOut.push(check.name);
+      else continue;
+      outputs.push(`${check.name} (\`${check.command}\`) ${why}:\n${result.tail.slice(-3_000)}`);
+    }
+    const report = lines.join('\n') || '- (no checks configured)';
+    const error = passed.length
+      ? `${passed.join(', ')} passed; expected ${passed.length === 1 ? 'it' : 'them'} to fail`
+      : timedOut.length
+        ? `${timedOut.join(', ')} timed out; expected ${timedOut.length === 1 ? 'it' : 'them'} to fail`
+        : null;
+    const done = completed(run.id, step.stepId, attempt, error ? 'failed' : 'succeeded', zeroUsage, Date.now() - started, null, report, error);
+    if (!error) {
+      this.append(run.id, runEvents.stepCompleted, done);
+      return { kind: 'passed' };
+    }
+    const reason = passed.length
+      ? 'The tests pass, but this step expects them to fail: the new tests must fail against the current code, for the reason the planned change will fix. Write tests that exercise the new behaviour.'
+      : 'The tests timed out instead of failing. Make the new tests fail quickly against the current code, for the reason the planned change will fix.';
+    return {
+      kind: 'rejected',
+      feedback: `${reason}\n\n${outputs.join('\n\n')}`,
+      events: [{ type: runEvents.stepCompleted, stream: runStream(run.id), data: done, actor: SYSTEM }],
+    };
+  }
+
   private async agentStep(
     run: Run,
     step: Extract<PlannedStep, { kind: 'agent' }>,
@@ -405,6 +468,8 @@ export class RunService {
     // under Conventional Commits an agent without its own contract answers with its commit message (ADR-0033)
     const contract: OutputContract | undefined = agent.output ?? (project.settings.commits.style === 'conventional' ? 'commit' : undefined);
     if (!resumeSessionId) this.stepStarted(run.id, step.stepId, attempt, position.index, 'agent', step.name, agent.id, agent.version);
+    // Megalodon commits only when a step ends, so HEAD is still where this step started, also on resume
+    const stepBase = step.tests ? await head(run.worktreePath) : null;
     const { prompt, session } = resumeSessionId
       ? { prompt: resumePrompt, session: resumeSessionId }
       : await this.agentPrompt(run, step, agent, contract, position, task, project);
@@ -445,6 +510,27 @@ export class RunService {
       }
       // the commit message lives in git, not in the step's output: that stays the agent contract's (ADR-0032, ADR-0033)
       const result = event.result?.trim() ? event.result : (commit?.summary ?? event.result);
+
+      // the test-path guard runs before the commit, so a retry starts from the same base (ADR-0034)
+      if (step.tests && stepBase) {
+        const violations = testPathViolations(await stepChanges(run.worktreePath, stepBase), step.testPaths, step.tests);
+        if (violations.length) {
+          const list = violations.slice(0, 5).join(', ') + (violations.length > 5 ? ', …' : '');
+          const error = step.tests === 'locked' ? `Changed locked test files: ${list}` : `Changed files outside the test paths: ${list}`;
+          const failed: NewEvent = {
+            type: runEvents.stepCompleted,
+            stream: runStream(run.id),
+            data: completed(run.id, step.stepId, attempt, 'failed', event.usage, event.durationMs, event.numTurns, result, error),
+            actor: SYSTEM,
+          };
+          return {
+            kind: 'rejected',
+            feedback: testPathFeedback(step.tests, violations, step.testPaths),
+            events: [failed],
+            rule: { retry: step.stepId, max: project.settings.maxFixPasses },
+          };
+        }
+      }
 
       try {
         const message = runCommitMessage(project.settings.commits, task, step, attempt, event.result ?? '', commit?.commit ?? null);
@@ -582,10 +668,12 @@ export class RunService {
       return { prompt: reviewPrompt(base, plan, await branchDiff(run.worktreePath, run.baseSha), checks), session: null };
     }
     // a retry continues the agent's previous session with the reason, when there is one
-    const commit = contract === 'commit' ? `\n\n${commitInstructions}` : '';
+    const types = step.commitTypes?.length ? `\n${commitTypeInstructions(step.commitTypes)}` : '';
+    const commit = contract === 'commit' ? `\n\n${commitInstructions}${types}` : '';
     const previous = position.sessions.get(step.stepId) ?? null;
     if (position.feedback && previous) return { prompt: `${fixPrompt(position.feedback)}${commit}`, session: previous };
-    const prompt = implementationPrompt(base, plan);
+    const tests = step.tests ? `\n\n${testStepInstructions(step.tests, step.testPaths)}` : '';
+    const prompt = `${implementationPrompt(base, plan)}${tests}`;
     return { prompt: `${position.feedback ? `${prompt}\n\n${fixPrompt(position.feedback)}` : prompt}${commit}`, session: null };
   }
 
@@ -674,6 +762,15 @@ function completed(
   error: string | null,
 ) {
   return { runId, stepId, attempt, status, usage, durationMs: Math.round(durationMs), numTurns, result, error };
+}
+
+/** What the agent gets back when its step changed files the test-path guard forbids. */
+function testPathFeedback(mode: 'only' | 'locked', files: string[], globs: string[]): string {
+  const list = files.map((f) => `- ${f}`).join('\n');
+  const patterns = globs.map((g) => `\`${g}\``).join(', ');
+  return mode === 'locked'
+    ? `This step changed test files, which are locked (they match ${patterns}):\n${list}\n\nRestore them (\`git checkout HEAD -- <path>\`; delete test files you added) and make the tests pass by changing the code only.`
+    : `This step writes tests only, but it changed files outside the test paths (${patterns}):\n${list}\n\nRestore them (\`git checkout HEAD -- <path>\`; delete files you added) and keep only the tests; a later step writes the code.`;
 }
 
 const stopped = (active: Active): Ending => ({

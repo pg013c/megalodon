@@ -51,6 +51,29 @@ export const commitInstructions = [
   '- trailers: git trailers as `Token: value`, only if the change needs them; may be empty.',
 ].join('\n');
 
+/** For a step guarded by the project's test paths (ADR-0034). */
+export function testStepInstructions(mode: 'only' | 'locked', globs: readonly string[]): string {
+  const list = globs.map((g) => `- \`${g}\``).join('\n');
+  return mode === 'only'
+    ? [
+        'This step writes the tests only. Unlike your usual instructions, do not implement the change and do not make the tests pass; a later step does.',
+        "Write tests for the plan that fail against the current code, for the reason the planned change will fix. Change only files matching the project's test paths:",
+        list,
+        'Megalodon runs the tests after this step and expects them to fail.',
+      ].join('\n')
+    : [
+        'The tests for this task are written and locked: do not change, add or delete any file matching:',
+        list,
+        'Change the code until they pass. If a test looks wrong, say so in your summary instead of changing it.',
+      ].join('\n');
+}
+
+/** The commit type a step must use under Conventional Commits. */
+export function commitTypeInstructions(types: readonly string[]): string {
+  const list = types.map((t) => `\`${t}\``);
+  return types.length === 1 ? `The type of this commit is ${list[0]}.` : `The type of this commit is one of ${list.join(', ')}.`;
+}
+
 export function reviewPrompt(base: string, plan: PlanOutput | null, diff: string, checks: string | null): string {
   return [
     base,

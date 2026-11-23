@@ -1,0 +1,30 @@
+name: Test-first
+description: For projects that commit failing tests first; needs the project's test paths and a check
+  named test. Plan, write failing tests (red), write the code with the tests locked (green), then
+  checks and review.
+steps:
+  - id: plan
+    agent: planner
+  - id: red
+    name: 'Red: tests'
+    agent: implementer
+    tests: only
+    commitTypes: [test]
+  - id: red-check
+    name: Tests fail
+    check: project
+    only: [test]
+    expect: fail
+    onFail: { retry: red, max: project }
+  - id: green
+    name: 'Green: code'
+    agent: implementer
+    tests: locked
+    commitTypes: [feat, fix]
+  - id: checks
+    check: project
+    onFail: { retry: green, max: project }
+  - id: review
+    agent: reviewer
+    gate: { minScore: 7 }
+    onFail: { retry: green, max: 1 }

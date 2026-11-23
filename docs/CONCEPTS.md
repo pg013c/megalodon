@@ -146,9 +146,24 @@ themselves. Each project chooses how (ADR-0033):
 |---|---|---|
 | Step commit subject | `#N <title>`; on a retry `#N <step>: fixes (attempt k)` | The implementer's `type(scope): summary`; `chore: #N <title>` when it gives none or an invalid one |
 | Step commit body | The agent's reply | The implementer's commit body; never the chat reply |
+| Step commit types | Not used | A step's `commitTypes` (e.g. `test` for red, `feat`/`fix` for green): another type is replaced by the first allowed one, which also replaces `chore` in the fallback (ADR-0034) |
 | Merge commits | `Merge #N <title>`, `Merge <base> into <branch>` | `merge: #N <title>`, `merge: <base> into <branch>` |
 
 - **Trailers** (`Token: value`) are appended to every step commit, after the agent's own.
 - **Hooks**: off by default (`--no-verify`). When on, the project's git hooks run on step commits;
   a failing hook fails the step and sends the work back to the agent with the hook's output, up to
   the project's fix passes, like failing checks.
+
+## 9. Pipelines
+
+Built-in pipelines ship in `library/pipelines/`; a library file with the same id overrides one.
+
+| Pipeline | Steps | Retries |
+|---|---|---|
+| `feature` | plan → implement → checks → review (gate ≥ 7) | checks → implement (fix passes); review → implement (once) |
+| `test-first` | plan → red (tests only) → red-check (the `test` check must fail) → green (tests locked) → checks → review (gate ≥ 7) | red-check → red, red → red, green → green (fix passes); checks → green (fix passes); review → green (once) |
+
+`test-first` (ADR-0034) is for projects that commit failing tests before the code. It needs the
+project's `testPaths` (globs of test files) and a required check named `test`; without them a run
+cannot start. Red may change only files matching `testPaths` and green none of them; a step that
+breaks this fails without committing and retries with the paths to restore.

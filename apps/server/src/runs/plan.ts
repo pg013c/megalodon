@@ -6,11 +6,13 @@ import {
   type Project,
   type StoredEvent,
 } from '@megalodon/contracts';
+import { AppError } from '../errors';
 import type { Library } from '../library/library';
 
 /**
  * The steps of a run, fixed at its start: the project's setup, then the pipeline's steps with
- * `max: project` resolved and the project's checks copied in.
+ * `max: project` resolved and the project's checks and test paths copied in. Refuses a pipeline
+ * the project cannot run: a check it does not have, or a test guard without test paths (ADR-0034).
  */
 export function buildPlan(source: { pipelineId: string } | { agentId: string }, project: Project, library: Library) {
   const setup: PlannedStep[] = project.settings.setup.length
@@ -19,7 +21,7 @@ export function buildPlan(source: { pipelineId: string } | { agentId: string }, 
 
   if ('agentId' in source) {
     const agent = library.agent(source.agentId);
-    const plan: PlannedStep[] = [...setup, { kind: 'agent', stepId: 'agent', name: agent.name, agentId: agent.id, gate: null, onFail: null }];
+    const plan: PlannedStep[] = [...setup, { kind: 'agent', stepId: 'agent', name: agent.name, agentId: agent.id, gate: null, onFail: null, tests: null, testPaths: [], commitTypes: null }];
     return { pipelineId: `agent:${agent.id}`, pipelineVersion: agent.version, plan };
   }
 
@@ -28,9 +30,32 @@ export function buildPlan(source: { pipelineId: string } | { agentId: string }, 
     const onFail = step.onFail
       ? { retry: step.onFail.retry, max: step.onFail.max === 'project' ? project.settings.maxFixPasses : step.onFail.max }
       : null;
-    if ('check' in step) return { kind: 'check', stepId: step.id, name: step.name ?? 'Checks', checks: project.settings.checks, onFail };
+    if ('check' in step) {
+      const name = step.name ?? 'Checks';
+      const missing = (step.only ?? []).find((check) => !project.settings.checks.some((c) => c.name === check));
+      if (missing) throw new AppError(400, 'CHECK_NOT_FOUND', `Step "${name}" of ${pipeline.name} runs the check "${missing}"; ${project.name} has no such check`);
+      const checks = step.only ? project.settings.checks.filter((c) => step.only!.includes(c.name)) : project.settings.checks;
+      // a step that expects failure needs something whose failure counts
+      if (step.expect === 'fail' && !checks.some((c) => c.required)) {
+        throw new AppError(400, 'CHECK_NOT_FOUND', `Step "${name}" of ${pipeline.name} needs a required check to fail; ${project.name} has none among ${step.only?.join(', ') ?? 'its checks'}`);
+      }
+      return { kind: 'check', stepId: step.id, name, checks, onFail, expect: step.expect };
+    }
     const agent = library.agent(step.agent);
-    return { kind: 'agent', stepId: step.id, name: step.name ?? agent.name, agentId: agent.id, gate: step.gate ?? null, onFail };
+    if (step.tests && !project.settings.testPaths.length) {
+      throw new AppError(400, 'NO_TEST_PATHS', `${pipeline.name} needs the project's test paths; set them in the project settings`);
+    }
+    return {
+      kind: 'agent',
+      stepId: step.id,
+      name: step.name ?? agent.name,
+      agentId: agent.id,
+      gate: step.gate ?? null,
+      onFail,
+      tests: step.tests ?? null,
+      testPaths: step.tests ? project.settings.testPaths : [],
+      commitTypes: step.commitTypes ?? null,
+    };
   });
   return { pipelineId: pipeline.id, pipelineVersion: pipeline.version, plan: [...setup, ...steps] };
 }

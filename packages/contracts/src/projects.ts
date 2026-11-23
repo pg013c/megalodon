@@ -46,6 +46,10 @@ export const policiesSchema = z.object({
 export type Policies = z.infer<typeof policiesSchema>;
 export const defaultPolicies: Policies = policiesSchema.parse({});
 
+/** The commit types of @commitlint/config-conventional. */
+export const conventionalTypes = ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'build', 'ci', 'chore', 'revert'] as const;
+export type ConventionalType = (typeof conventionalTypes)[number];
+
 /** A git trailer: `Token: value`, e.g. `Signed-off-by: Name <email>`. */
 export const TRAILER = /^[A-Za-z0-9][A-Za-z0-9-]*: \S.*$/;
 
@@ -79,6 +83,8 @@ export const projectSettingsSchema = z
     policies: policiesSchema.default(defaultPolicies),
     /** Commit conventions of run commits; the default keeps Megalodon's own format. */
     commits: commitsSchema.default(defaultCommits),
+    /** Glob patterns of test files; the test-first pipeline writes them only in its red step and locks them in green (ADR-0034). */
+    testPaths: z.array(z.string().trim().min(1)).default([]),
   })
   .refine((s) => new Set(s.checks.map((c) => c.name)).size === s.checks.length, {
     message: 'Check names must be unique',

@@ -57,6 +57,20 @@ export async function branchDiff(cwd: string, baseSha: string): Promise<string> 
   return text.length <= DIFF_LIMIT ? text : `${text.slice(0, DIFF_LIMIT)}\n… (diff clipped; read the files for the rest)`;
 }
 
+/**
+ * Every path the worktree changed since `sinceSha`, committed or not: new, untracked, deleted, and
+ * both sides of a rename. The index is left as it was.
+ */
+export async function stepChanges(cwd: string, sinceSha: string): Promise<string[]> {
+  await git(cwd, ['add', '-A']);
+  try {
+    const out = await git(cwd, ['diff', '--cached', '--name-only', '--no-renames', '-z', sinceSha]);
+    return out.split('\0').filter(Boolean);
+  } finally {
+    await git(cwd, ['reset', '-q']);
+  }
+}
+
 export async function head(cwd: string): Promise<string> {
   return (await git(cwd, ['rev-parse', 'HEAD'])).trim();
 }

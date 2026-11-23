@@ -109,6 +109,12 @@ export function ProjectSettingsScreen() {
         </Field>
       </Section>
 
+      <Section title="Tests" description="Where the project keeps its tests.">
+        <Field label="Test paths" hint="Glob patterns, one per line, e.g. **/tests/**, **/*.test.ts. Used by the test-first pipeline.">
+          <TextArea value={form.testPaths} onChange={(e) => set('testPaths', e.target.value)} spellCheck={false} />
+        </Field>
+      </Section>
+
       <Section title="Commits" description="How Megalodon writes the commits on task branches.">
         <div className="inline-flex rounded-full bg-line/60 p-0.5">
           {(['megalodon', 'conventional'] as const).map((style) => (

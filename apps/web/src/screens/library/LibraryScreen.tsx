@@ -109,6 +109,8 @@ function PipelineCard({ pipeline }: { pipeline: Pipeline }) {
             <span className="rounded-full border border-line px-3 py-1">
               {step.name ?? ('agent' in step ? step.agent : 'Checks')}
               {'gate' in step && step.gate && <span className="ml-2 text-xs text-muted">gate ≥ {step.gate.minScore}</span>}
+              {'tests' in step && step.tests && <span className="ml-2 text-xs text-muted">{step.tests === 'only' ? 'tests only' : 'tests locked'}</span>}
+              {'expect' in step && step.expect === 'fail' && <span className="ml-2 text-xs text-muted">expects failure</span>}
               {step.onFail && (
                 <span className="ml-2 text-xs text-muted">
                   ↺ {step.onFail.retry} ×{step.onFail.max === 'project' ? 'fix passes' : step.onFail.max}

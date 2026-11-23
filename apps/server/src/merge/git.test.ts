@@ -38,4 +38,14 @@ describe('merge git helpers', () => {
     expect(globToRegExp('migrations/*.sql').test('migrations/x/001.sql')).toBe(false);
     expect(globToRegExp('src/auth/**').test('src/authors.ts')).toBe(false);
   });
+
+  it('matches `**/` as zero or more whole directories', () => {
+    expect(globToRegExp('**/tests/**').test('tests/a.ts')).toBe(true);
+    expect(globToRegExp('**/tests/**').test('src/tests/a.ts')).toBe(true);
+    expect(globToRegExp('**/tests/**').test('src/contests/a.ts')).toBe(false);
+    expect(globToRegExp('**/*.test.ts').test('a.test.ts')).toBe(true);
+    expect(globToRegExp('**/*.test.ts').test('src/x/a.test.ts')).toBe(true);
+    expect(globToRegExp('**/*.test.ts').test('src/x/a.ts')).toBe(false);
+    expect(globToRegExp('src/**/fixtures/*.json').test('src/fixtures/a.json')).toBe(true);
+  });
 });

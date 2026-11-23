@@ -113,7 +113,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
   });
   tool(
     'update_project_settings',
-    'Changes project settings: give only the fields to change (checks, setup, sensitivePaths, policies, maxParallel, commits: { style: megalodon|conventional, trailers, hooks }, …).',
+    'Changes project settings: give only the fields to change (checks, setup, sensitivePaths, testPaths, policies, maxParallel, commits: { style: megalodon|conventional, trailers, hooks }, …).',
     { projectId: projectRef, changes: z.record(z.string(), z.unknown()) },
     ({ projectId, changes }) => {
       const current = project(projectId);

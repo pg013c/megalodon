@@ -129,8 +129,19 @@ export const plannedStepSchema = z.discriminatedUnion('kind', [
     agentId: z.string(),
     gate: gateSchema.nullable().default(null),
     onFail: retrySchema.nullable().default(null),
+    /** The test-path guard (ADR-0034); `testPaths` is copied from the project when the run starts. */
+    tests: z.enum(['only', 'locked']).nullable().default(null),
+    testPaths: z.array(z.string()).default([]),
+    commitTypes: z.array(z.string()).nullable().default(null),
   }),
-  z.object({ kind: z.literal('check'), stepId: z.string(), name: z.string(), checks: z.array(checkSchema), onFail: retrySchema.nullable() }),
+  z.object({
+    kind: z.literal('check'),
+    stepId: z.string(),
+    name: z.string(),
+    checks: z.array(checkSchema),
+    onFail: retrySchema.nullable(),
+    expect: z.enum(['pass', 'fail']).default('pass'),
+  }),
 ]);
 export type PlannedStep = z.infer<typeof plannedStepSchema>;
 

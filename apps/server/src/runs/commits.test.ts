@@ -56,6 +56,31 @@ describe('runCommitMessage: Conventional Commits', () => {
   });
 });
 
+describe('runCommitMessage: step commit types', () => {
+  const red = { name: 'Red: tests', commitTypes: ['test'] };
+  const green = { name: 'Green: code', commitTypes: ['feat', 'fix'] };
+  const commit = (subject: string) => ({ subject, body: '', trailers: [] });
+
+  it("keeps the agent's subject when its type is allowed", () => {
+    expect(runCommitMessage(conventional, task, red, 1, reply, commit('test(cart): cover totals'))).toBe('test(cart): cover totals');
+    expect(runCommitMessage(conventional, task, green, 1, reply, commit('fix(cart): round totals'))).toBe('fix(cart): round totals');
+  });
+
+  it('replaces another type with the first allowed one, keeping the scope, the mark and the summary', () => {
+    expect(runCommitMessage(conventional, task, red, 1, reply, commit('chore(x): add tests'))).toBe('test(x): add tests');
+    expect(runCommitMessage(conventional, task, green, 1, reply, commit('refactor!: new totals'))).toBe('feat!: new totals');
+  });
+
+  it('falls back to the first allowed type', () => {
+    expect(runCommitMessage(conventional, task, red, 1, reply, null)).toBe('test: #7 Add checkout');
+    expect(runCommitMessage(conventional, task, green, 1, reply, commit('Add stuff'))).toBe('feat: #7 Add checkout');
+  });
+
+  it('leaves the Megalodon style alone', () => {
+    expect(runCommitMessage(defaultCommits, task, red, 1, reply, commit('chore: x'))).toBe(`#7 Add checkout\n\n${reply}`);
+  });
+});
+
 describe('isConventionalSubject', () => {
   it('accepts the conventional types, a scope and a breaking mark', () => {
     for (const s of ['feat: a', 'fix(api): b', 'refactor!: c', 'chore(deps)!: d', 'revert: e']) expect(isConventionalSubject(s)).toBe(true);

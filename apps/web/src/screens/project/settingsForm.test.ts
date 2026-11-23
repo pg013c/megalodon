@@ -13,6 +13,7 @@ const settings: ProjectSettings = {
   maxParallel: null,
   policies: defaultPolicies,
   commits: defaultCommits,
+  testPaths: ['**/tests/**'],
 };
 
 describe('settings form', () => {
@@ -24,9 +25,11 @@ describe('settings form', () => {
     const form = toForm(settings);
     form.checks.push({ name: ' ', command: '', required: false, timeoutSec: '60' });
     form.sensitivePaths = 'src/auth/**\n\n';
+    form.testPaths = '**/tests/**\n\n  **/*.test.ts \n';
     const result = fromForm(form, 'pnpm');
     expect(result.checks).toHaveLength(1);
     expect(result.sensitivePaths).toEqual(['src/auth/**']);
+    expect(result.testPaths).toEqual(['**/tests/**', '**/*.test.ts']);
   });
 
   it('round-trips commit conventions, trailers one per line', () => {

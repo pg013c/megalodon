@@ -77,6 +77,27 @@ describe('Library: pipelines', () => {
     expect(lib.agent('planner').output).toBe('plan');
   });
 
+  it('loads the built-in test-first pipeline', () => {
+    const lib = new Library([{ source: 'builtin', path: builtin }]);
+    const testFirst = lib.pipeline('test-first');
+    expect(testFirst.steps.map((s) => s.id)).toEqual(['plan', 'red', 'red-check', 'green', 'checks', 'review']);
+    expect(testFirst.steps[1]).toMatchObject({ agent: 'implementer', tests: 'only', commitTypes: ['test'] });
+    expect(testFirst.steps[2]).toMatchObject({ check: 'project', only: ['test'], expect: 'fail', onFail: { retry: 'red' } });
+    expect(testFirst.steps[3]).toMatchObject({ agent: 'implementer', tests: 'locked', commitTypes: ['feat', 'fix'] });
+    expect(testFirst.steps[4]).toMatchObject({ check: 'project', expect: 'pass', onFail: { retry: 'green' } });
+    expect(testFirst.steps[5]).toMatchObject({ agent: 'reviewer', onFail: { retry: 'green', max: 1 } });
+    expect(lib.pipeline('feature').steps[2]).toMatchObject({ expect: 'pass' });
+  });
+
+  it('rejects unknown step options', () => {
+    const expectation = pipelines({ 'p.yaml': pipelineFile('  - { id: a, check: project, expect: maybe }\n') });
+    expect(() => new Library([{ source: 'library', path: expectation }]).pipelines()).toThrow();
+    const tests = pipelines({ 'p.yaml': pipelineFile('  - { id: a, agent: x, tests: sometimes }\n') });
+    expect(() => new Library([{ source: 'library', path: tests }]).pipelines()).toThrow();
+    const types = pipelines({ 'p.yaml': pipelineFile('  - { id: a, agent: x, commitTypes: [feature] }\n') });
+    expect(() => new Library([{ source: 'library', path: types }]).pipelines()).toThrow();
+  });
+
   it('rejects a retry of a later or unknown step, and duplicate ids', () => {
     const later = pipelines({ 'p.yaml': pipelineFile('  - { id: a, check: project, onFail: { retry: b } }\n  - { id: b, agent: x }\n') });
     expect(() => new Library([{ source: 'library', path: later }]).pipelines()).toThrow('not an earlier step');

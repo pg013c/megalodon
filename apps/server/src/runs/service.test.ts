@@ -407,6 +407,147 @@ describe('RunService: commit conventions', () => {
   });
 });
 
+/** test-first: tests are `*.test.sh`, the `test` check runs hello.test.sh, commits are conventional. */
+async function withTestFirst(server: Awaited<ReturnType<typeof setup>>, maxFixPasses = 2) {
+  await server.projects.updateSettings(server.project.id, {
+    ...server.project.settings,
+    checks: [{ name: 'test', command: 'sh hello.test.sh', required: true, timeoutSec: 30 }],
+    testPaths: ['**/*.test.sh'],
+    commits: { style: 'conventional', trailers: [], hooks: false },
+    maxFixPasses,
+  });
+}
+
+const TEST = 'test -f hello.txt\n';
+const commit = (subject: string) => ({ summary: subject, commit: { subject, body: '', trailers: [] } });
+const red = (files: Record<string, string> = { 'hello.test.sh': TEST }): Script => ({ files, output: commit('test: hello') });
+const green = (files: Record<string, string> = { 'hello.txt': 'hi\n' }): Script => ({ files, output: commit('feat: hello') });
+
+/** The implementer per call of its own: red scripts first, then green ones. */
+function implementer(...scripts: Script[]): ScriptFn {
+  let call = 0;
+  return () => scripts[call++] ?? green();
+}
+
+const branchSubjects = (root: string, ...path: string[]) =>
+  sh(root, 'log', '--format=%s', 'main..megalodon/1-say-hello', ...(path.length ? ['--', ...path] : [])).trim().split('\n');
+
+describe('RunService: the test-first pipeline', () => {
+  it('commits failing tests, then the code with the tests locked', async () => {
+    const server = await setup(team({ implementer: implementer(red(), green()) }));
+    await withTestFirst(server);
+    const { runs, runtime, root, task, work } = server;
+
+    const run = await runs.start(task.id, { pipelineId: 'test-first' });
+    await runs.idle();
+
+    const details = runs.details(run.id);
+    expect(details.run.status).toBe('succeeded');
+    expect(details.steps.map((s) => [s.stepId, s.attempt, s.status])).toEqual([
+      ['plan', 1, 'succeeded'],
+      ['red', 1, 'succeeded'],
+      ['red-check', 1, 'succeeded'],
+      ['green', 1, 'succeeded'],
+      ['checks', 1, 'succeeded'],
+      ['review', 1, 'succeeded'],
+    ]);
+    expect(details.steps[2]?.result).toBe('- test: failed as expected (exit code 1)');
+    expect(branchSubjects(root)).toEqual(['feat: hello', 'test: hello']);
+
+    const [, redCall, greenCall] = runtime.calls;
+    expect(redCall?.prompt).toContain('This step writes the tests only');
+    expect(redCall?.prompt).toContain('`**/*.test.sh`');
+    expect(redCall?.prompt).toContain('The type of this commit is `test`.');
+    expect(greenCall?.prompt).toContain('written and locked');
+    expect(greenCall?.prompt).toContain('The type of this commit is one of `feat`, `fix`.');
+    expect(work.details(task.id).task.status).toBe('merging');
+  });
+
+  it('sends tests that already pass back to the red step', async () => {
+    const server = await setup(team({ implementer: implementer(red({ 'hello.test.sh': 'exit 0\n' }), red(), green()) }));
+    await withTestFirst(server);
+    const { runs, runtime, task, decisions } = server;
+
+    const run = await runs.start(task.id, { pipelineId: 'test-first' });
+    await runs.idle();
+
+    const details = runs.details(run.id);
+    expect(details.run.status).toBe('succeeded');
+    expect(details.steps.map((s) => [s.stepId, s.attempt, s.status]).slice(1, 5)).toEqual([
+      ['red', 1, 'succeeded'],
+      ['red-check', 1, 'failed'],
+      ['red', 2, 'succeeded'],
+      ['red-check', 2, 'succeeded'],
+    ]);
+    expect(details.steps[2]).toMatchObject({ error: 'test passed; expected it to fail', result: '- test: passed (expected to fail)' });
+    expect(decisions.queries.forRun(run.id).find((d) => d.kind === 'retry')).toMatchObject({ outcome: 'retry red', stepId: 'red-check' });
+    expect(runtime.calls[2]?.resumeSessionId).toBe('session-2');
+    expect(runtime.calls[2]?.prompt).toContain('The tests pass, but this step expects them to fail');
+  });
+
+  it('fails a green step that touches the tests and lets it try again without committing', async () => {
+    const server = await setup(team({ implementer: implementer(red(), green({ 'hello.txt': 'hi\n', 'hello.test.sh': 'true\n' }), green({ 'hello.test.sh': TEST })) }));
+    await withTestFirst(server);
+    const { runs, runtime, root, task, decisions } = server;
+
+    const run = await runs.start(task.id, { pipelineId: 'test-first' });
+    await runs.idle();
+
+    const details = runs.details(run.id);
+    expect(details.run.status).toBe('succeeded');
+    expect(details.steps.map((s) => [s.stepId, s.attempt, s.status]).slice(3, 5)).toEqual([
+      ['green', 1, 'failed'],
+      ['green', 2, 'succeeded'],
+    ]);
+    expect(details.steps[3]?.error).toBe('Changed locked test files: hello.test.sh');
+    expect(decisions.queries.forRun(run.id).find((d) => d.kind === 'retry')).toMatchObject({ outcome: 'retry green', stepId: 'green' });
+    expect(runtime.calls[3]?.prompt).toContain('This step changed test files, which are locked');
+    expect(runtime.calls[3]?.prompt).toContain('- hello.test.sh');
+    expect(branchSubjects(root)).toEqual(['feat: hello', 'test: hello']);
+    expect(branchSubjects(root, 'hello.test.sh')).toEqual(['test: hello']);
+    expect(sh(root, 'show', 'megalodon/1-say-hello:hello.test.sh')).toBe(TEST);
+  });
+
+  it('fails a red step that writes code', async () => {
+    const writesCode = red({ 'hello.test.sh': TEST, 'src.txt': 'code\n' });
+    const server = await setup(team({ implementer: implementer(writesCode, writesCode) }));
+    await withTestFirst(server, 1);
+    const { runs, task, work, decisions } = server;
+
+    const run = await runs.start(task.id, { pipelineId: 'test-first' });
+    await runs.idle();
+
+    const details = runs.details(run.id);
+    expect(details.steps.map((s) => [s.stepId, s.attempt, s.status]).slice(1)).toEqual([
+      ['red', 1, 'failed'],
+      ['red', 2, 'failed'],
+    ]);
+    expect(details.steps[1]?.error).toBe('Changed files outside the test paths: src.txt');
+    expect(details.run).toMatchObject({ status: 'failed', error: 'Red: tests did not pass', commitSha: null });
+    expect(decisions.queries.forRun(run.id).filter((d) => d.kind === 'retry').map((d) => d.outcome)).toEqual(['retry red', 'stop']);
+    expect(work.details(task.id).task.status).toBe('needs_you');
+  });
+
+  it('refuses to start without test paths or a test check, before creating a worktree', async () => {
+    const server = await setup();
+    const { runs, projects, project, root, task } = server;
+    await projects.updateSettings(project.id, { ...project.settings, checks: [{ name: 'test', command: 'true', required: true, timeoutSec: 30 }] });
+    await expect(runs.start(task.id, { pipelineId: 'test-first' })).rejects.toMatchObject({ code: 'NO_TEST_PATHS' });
+
+    await projects.updateSettings(project.id, { ...project.settings, checks: [{ name: 'lint', command: 'true', required: true, timeoutSec: 30 }], testPaths: ['**/*.test.sh'] });
+    await expect(runs.start(task.id, { pipelineId: 'test-first' })).rejects.toMatchObject({
+      code: 'CHECK_NOT_FOUND',
+      message: 'Step "Tests fail" of Test-first runs the check "test"; shop has no such check',
+    });
+
+    await projects.updateSettings(project.id, { ...project.settings, checks: [{ name: 'test', command: 'true', required: false, timeoutSec: 30 }], testPaths: ['**/*.test.sh'] });
+    await expect(runs.start(task.id, { pipelineId: 'test-first' })).rejects.toMatchObject({ code: 'CHECK_NOT_FOUND' });
+
+    expect(runs.forTask(task.id)).toEqual([]);
+    expect(sh(root, 'worktree', 'list').trim().split('\n')).toHaveLength(1);
+  });
+});
+
 describe('RunService: recovery and rebuild', () => {
   it('fails a run whose worktree disappeared while the server was down', async () => {
     const dir = tempDir();
