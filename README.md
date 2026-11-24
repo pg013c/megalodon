@@ -83,13 +83,15 @@ The MVP was finished on 2026-10-26. Since then, changes to Megalodon have gone t
 the operator writes a task, and the stable instance triages it, plans, implements, runs the checks,
 reviews the change in a worktree and merges it into this repository.
 
-As of 2026-11-02:
+As of 2026-11-24 (release v0.2.1):
 
-- 4 tasks went the whole way through the pipeline, and all 4 were merged by the merge policy, with
-  no manual merge;
-- 10 of the 22 commits in this repository were written by Megalodon's agents and merge queue
-  (4 changes, 2 branch updates and 4 merges): look for `#N …` and `Merge #N …` in `git log`;
-- 24 agent decisions are on record, at a total agent cost of $11.16.
+- 11 tasks went the whole way through the pipeline; 10 were merged by the merge policy and 1 after
+  the operator overrode a failed review gate, with the reason on record;
+- 29 of the 43 commits in this repository were written by Megalodon's agents and merge queue:
+  look for `#N …`, `Merge #N …` and `Merge main into megalodon/…` in `git log`;
+- the agent and pipeline scorecard (#13, #14, #15, #19), project commit conventions (#16), the
+  test-first pipeline (#17) and the duplicate-ADR guard (#18) were all built this way, in one night;
+- 76 agent decisions are on record for this project, at a total agent cost of $71.86.
 
 The stable instance runs from a tagged release, so a merge into `main` never changes the
 instance that made it; it is upgraded with a new tag (ADR-0013).
@@ -100,7 +102,7 @@ instance that made it; it is upgraded with a new tag (ADR-0013).
 - [`docs/CONCEPTS.md`](docs/CONCEPTS.md): vocabulary, statuses, dependencies and queue rules.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): how it is built.
 - [`docs/MVP.md`](docs/MVP.md): the build plan, step by step.
-- [`docs/adr/`](docs/adr/): 35 architecture decision records.
+- [`docs/adr/`](docs/adr/): 36 architecture decision records.
 
 ## Running
 
@@ -127,8 +129,9 @@ Environment: `MEGALODON_PORT`, `MEGALODON_WEB_PORT` (dev UI), `MEGALODON_DATA_DI
 ## Status
 
 A working MVP, used daily by its author: single user, local only (binds to `127.0.0.1`, no
-authentication), Claude as the only agent runtime. Next on the backlog: evaluation of agents and
-pipelines, GitHub and AWS integrations, search, and a per-project knowledge base.
+authentication), Claude as the only agent runtime. Next on the backlog: golden task sets to compare
+agent versions before adopting them, GitHub and AWS integrations, search, and a per-project
+knowledge base.
 
 ## License
 
