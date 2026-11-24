@@ -1,6 +1,6 @@
 # ADR-0032: The agent and pipeline scorecard
 
-Status: Accepted · Date: 2026-11-23 · Amended 2026-11-24 (#15) · Builds on ADR-0005, ADR-0029
+Status: Accepted · Date: 2026-11-23 · Amended 2026-11-24 (#15), 2026-11-24 (#19) · Builds on ADR-0005, ADR-0029
 
 ## Context
 Every run records the pipeline version it followed and every agent step the agent version it used
@@ -56,11 +56,34 @@ aggregated these versions yet, and "success" and "rework" need one meaning befor
   made by the operator (plan approval, gate, verdict or retry override, merging it by hand).
   Share = that count / finished runs. Operator actions that are not decisions (restarting a failed
   task, cleaning the checkout so a merge can go on) do not count as intervention.
-- **Period**: a step or run counts in the period it started, a decision in the period it was made.
+- **Reviewer verdicts** (#19): an agent row carries a `reviewer` block when that version made at
+  least one `review.verdict` decision in the period. Who is a reviewer comes from the log, not from
+  the library's `output: review`, so a removed or older version keeps its numbers. One row per agent
+  verdict in `scorecard_reviews` (migration 12), rebuilt with the rest of the scorecard; existing
+  installs fill it once on startup when the log has agent verdicts and the table is empty.
+  - `verdicts`: the verdicts it gave, including those the operator overrode later. Operator
+    verdicts (overrides) never count, for any version.
+  - `approved` = verdicts with outcome `approve`; `approvalRate` = approved / verdicts.
+  - `avgScore` (score given) = the average `score` of its verdicts, the original ones even when
+    overridden; null when no verdict carried a numeric score.
+  - `findings` by severity (`blocker`, `major`, `minor`) = the items of the verdict's
+    `inputs.findings`; `findingsPerReview` = those totals / verdicts. Findings of an unknown severity,
+    or a verdict without a findings list, add nothing.
+  - `gated` = verdicts whose step had a `gate` decision; `sentBack` = those whose original gate
+    outcome was `fail`. That covers both a request for changes and an approval below the gate's
+    `minScore`, whether the run then retried or ran out of fix passes. An operator override of the
+    gate does not change it. `sentBackRate` = sentBack / gated; null when no verdict was gated (a
+    reviewer in a pipeline without a gate shows —, not 0%). Because an approval below `minScore` is
+    sent back, approval rate and sent-back share are not complements.
+- **Period**: a step or run counts in the period it started, a decision (and a verdict) in the
+  period it was made.
 - **Single-agent runs** are pipeline `agent:<id>`; their current version is the agent's. Runs from
   before pipelines existed (`unknown` version) are never current.
 
 ## Consequences
+- A gate is tied to its verdict by being appended right after it, for the same run and step (both
+  in `RunService.judge` today). Reordering them, or a gate on a step without a verdict, would leave a
+  verdict ungated or tie the gate to the wrong verdict.
 - Rework relies on the retry decision being recorded before the step it sends the run back to
   starts (both happen in the run loop today); changing that order would silently zero rework.
 - The library re-reads agents for every step, so one run can count for two versions of the same

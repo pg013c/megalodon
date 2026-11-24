@@ -7,20 +7,21 @@ import {
   runStartedSchema,
   stepCompletedSchema,
   stepStartedSchema,
+  type Decision,
   type StoredEvent,
 } from '@megalodon/contracts';
 import type { Database } from '../db';
 import type { Projection } from '../events/projection';
 
 /**
- * What the scorecard counts per run, step attempt and agent decision (migration 10,
- * ADR-0032). It reads only its own tables and the task's project, so it rebuilds by itself.
+ * What the scorecard counts per run, step attempt, agent decision and review verdict (migrations
+ * 10 and 12, ADR-0032). It reads only its own tables and the task's project, so it rebuilds by itself.
  */
 export class ScorecardProjection implements Projection {
   readonly name = 'scorecard';
 
   reset(db: Database): void {
-    db.exec('DELETE FROM scorecard_runs; DELETE FROM scorecard_steps; DELETE FROM scorecard_decisions;');
+    db.exec('DELETE FROM scorecard_runs; DELETE FROM scorecard_steps; DELETE FROM scorecard_decisions; DELETE FROM scorecard_reviews;');
   }
 
   apply(db: Database, event: StoredEvent): void {
@@ -107,6 +108,14 @@ export class ScorecardProjection implements Projection {
              SELECT rowid FROM scorecard_steps WHERE run_id = ? AND kind = 'agent' AND structured = 0 AND status = 'succeeded' ORDER BY seq DESC LIMIT 1)`,
         ).run(d.inputs.score, d.runId);
       }
+      if (d.kind === 'review.verdict' && actor.kind === 'agent') this.review(db, event, d, actor);
+      // the gate on that verdict, as first decided: an override of it later does not change it
+      if (d.kind === 'gate' && d.stepId && !d.overrides) {
+        db.prepare(
+          `UPDATE scorecard_reviews SET gate = ? WHERE rowid = (
+             SELECT rowid FROM scorecard_reviews WHERE run_id = ? AND step_id = ? AND gate IS NULL ORDER BY seq DESC LIMIT 1)`,
+        ).run(d.outcome, d.runId, d.stepId);
+      }
     }
     if (actor.kind === 'agent') {
       const projectId = d.runId ? this.runProject(db, d.runId) : this.taskProject(db, d.taskId);
@@ -121,6 +130,25 @@ export class ScorecardProjection implements Projection {
       }
     }
     if (d.overrides) db.prepare('UPDATE scorecard_decisions SET overridden = 1 WHERE id = ?').run(d.overrides);
+  }
+
+  /** A reviewer's verdict as it gave it. Older verdicts may lack findings or a score: read them defensively. */
+  private review(db: Database, event: StoredEvent, d: Omit<Decision, 'actor' | 'at' | 'supersededBy'>, actor: { agentId: string; version: string }): void {
+    if (!d.runId || !d.stepId) return;
+    const projectId = this.runProject(db, d.runId);
+    if (!projectId) return;
+    const counts = { blocker: 0, major: 0, minor: 0 };
+    if (Array.isArray(d.inputs.findings)) {
+      for (const finding of d.inputs.findings as unknown[]) {
+        const severity = (finding as { severity?: unknown } | null)?.severity;
+        if (severity === 'blocker' || severity === 'major' || severity === 'minor') counts[severity] += 1;
+      }
+    }
+    const score = typeof d.inputs.score === 'number' ? d.inputs.score : null;
+    db.prepare(
+      `INSERT INTO scorecard_reviews (id, run_id, step_id, project_id, agent_id, agent_version, verdict, score, blockers, majors, minors, at, seq)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(d.id, d.runId, d.stepId, projectId, actor.agentId, actor.version, d.outcome, score, counts.blocker, counts.major, counts.minor, event.at, event.seq);
   }
 
   private runProject(db: Database, runId: string): string | undefined {
@@ -152,6 +180,19 @@ export interface AgentDecisionRow {
   agentVersion: string;
   decisions: number;
   overridden: number;
+}
+
+export interface ReviewerRow {
+  agentId: string;
+  agentVersion: string;
+  verdicts: number;
+  approved: number;
+  avgScore: number | null;
+  blockers: number;
+  majors: number;
+  minors: number;
+  gated: number;
+  sentBack: number;
 }
 
 export interface PipelineRow {
@@ -226,6 +267,19 @@ export class ScorecardQueries {
       .all(projectId, projectId, since ?? '') as unknown as AgentDecisionRow[];
   }
 
+  /** The verdicts each reviewer version gave, counted in the period they were made in. */
+  reviews(projectId: string | null, since: string | null): ReviewerRow[] {
+    return this.db
+      .prepare(
+        `SELECT agent_id AS agentId, agent_version AS agentVersion, COUNT(*) AS verdicts, SUM(verdict = 'approve') AS approved,
+           AVG(score) AS avgScore, SUM(blockers) AS blockers, SUM(majors) AS majors, SUM(minors) AS minors,
+           SUM(gate IS NOT NULL) AS gated, SUM(gate IS 'fail') AS sentBack
+         FROM scorecard_reviews WHERE ${DECISIONS}
+         GROUP BY agent_id, agent_version`,
+      )
+      .all(projectId, projectId, since ?? '') as unknown as ReviewerRow[];
+  }
+
   pipelines(projectId: string | null, since: string | null): PipelineRow[] {
     return this.db
       .prepare(
@@ -279,12 +333,14 @@ export class ScorecardQueries {
     return { total: total.n, runs };
   }
 
-  /** Runs or agent decisions in the log but not in the scorecard: it came after them (migration 10). */
+  /** Runs, agent decisions or review verdicts in the log but not in the scorecard: it came after them (migrations 10, 12). */
   needsBackfill(): boolean {
     const row = this.db
       .prepare(
         `SELECT (EXISTS (SELECT 1 FROM runs) AND NOT EXISTS (SELECT 1 FROM scorecard_runs))
-           OR (EXISTS (SELECT 1 FROM decisions WHERE json_extract(actor, '$.kind') = 'agent') AND NOT EXISTS (SELECT 1 FROM scorecard_decisions)) AS missing`,
+           OR (EXISTS (SELECT 1 FROM decisions WHERE json_extract(actor, '$.kind') = 'agent') AND NOT EXISTS (SELECT 1 FROM scorecard_decisions))
+           OR (EXISTS (SELECT 1 FROM decisions WHERE kind = 'review.verdict' AND json_extract(actor, '$.kind') = 'agent')
+             AND NOT EXISTS (SELECT 1 FROM scorecard_reviews)) AS missing`,
       )
       .get() as { missing: number };
     return row.missing === 1;

@@ -232,6 +232,116 @@ describe('ScorecardService: agents', () => {
   });
 });
 
+describe('ScorecardService: reviewers', () => {
+  const finding = (severity: 'blocker' | 'major' | 'minor') => ({ severity, file: null, message: severity });
+
+  it('counts the verdicts a reviewer gave, the score it gave, its findings and the gate', async () => {
+    const server = await setup({
+      reviewer: (_, call) => ({
+        output:
+          call === 1
+            ? { ...changes, findings: [finding('blocker'), finding('major'), finding('minor'), finding('minor')] }
+            : { ...approve, findings: [finding('minor')] },
+      }),
+    });
+    await server.projects.updateSettings(server.project.id, {
+      ...server.project.settings,
+      checks: [{ name: 'ok', command: 'true', required: true, timeoutSec: 30 }],
+      maxFixPasses: 2,
+    });
+    expect((await server.run('hello')).run.status).toBe('succeeded');
+
+    const card = server.scorecard.view('30d', null);
+    expect(agent(card, 'reviewer').reviewer).toEqual({
+      verdicts: 2,
+      approved: 1,
+      approvalRate: 0.5,
+      avgScore: 6,
+      findings: { blocker: 1, major: 1, minor: 3 },
+      findingsPerReview: { blocker: 0.5, major: 0.5, minor: 1.5 },
+      gated: 2,
+      sentBack: 1,
+      sentBackRate: 0.5,
+    });
+    expect(agent(card, 'implementer').reviewer).toBeUndefined();
+  });
+
+  it('keeps the original verdict and gate, per reviewer version', async () => {
+    const server = await setup();
+    const events = (runId: string) => {
+      const t = server.task(runId);
+      const run = (data: Record<string, unknown>) => ({ stream: `run:${runId}`, data: { runId, ...data }, actor: { kind: 'system' as const } });
+      const decision = (kind: string, outcome: string, inputs: Record<string, unknown>, actor: { kind: 'agent'; agentId: string; version: string } | { kind: 'policy'; policy: string }) =>
+        server.decisions.event({ taskId: t.id, runId, stepId: 'review', kind, outcome, rationale: 'r', alternatives: kind === 'gate' ? ['pass', 'fail'] : ['approve', 'request_changes'], inputs, actor });
+      return {
+        started: { type: runEvents.started, ...run({ taskId: t.id, projectId: server.project.id, pipelineId: 'feature', pipelineVersion: 'v', branch: 'b', worktreePath: '/nowhere', baseRef: 'main', baseSha: 'x', plan: [] }) },
+        verdict: (version: string, outcome: string, inputs: Record<string, unknown>) => decision('review.verdict', outcome, inputs, { kind: 'agent', agentId: 'reviewer', version }),
+        gate: (outcome: string) => decision('gate', outcome, {}, { kind: 'policy', policy: 'pipeline:feature' }),
+      };
+    };
+    const a = events('a');
+    const b = events('b');
+    const c = events('c');
+    // r1 approves with 5, below the gate's minScore: approved, yet sent back
+    const approvedLow = a.verdict('r1', 'approve', { score: 5, findings: [finding('major')] });
+    const failed = a.gate('fail');
+    // r2 in a pipeline without a gate, on a verdict from before findings were recorded
+    const ungated = b.verdict('r2', 'request_changes', { score: 3 });
+    // r1 again: a gate that passes, and a verdict with findings that are not a list
+    const passing = c.verdict('r1', 'request_changes', { findings: 'none', score: 'high' });
+    const passed = c.gate('pass');
+    server.store.append([a.started, approvedLow, failed, b.started, ungated, c.started, passing, passed]);
+
+    // the operator overrides the failed gate and the ungated verdict: neither changes what was given
+    server.decisions.override((failed.data as { id: string }).id, 'pass', 'Good enough.');
+    server.decisions.override((ungated.data as { id: string }).id, 'approve', 'Fine.');
+
+    const card = server.scorecard.view('30d', null);
+    const r1 = card.agents.find((x) => x.agentVersion === 'r1')!;
+    const r2 = card.agents.find((x) => x.agentVersion === 'r2')!;
+    expect(r1.reviewer).toEqual({
+      verdicts: 2,
+      approved: 1,
+      approvalRate: 0.5,
+      avgScore: 5,
+      findings: { blocker: 0, major: 1, minor: 0 },
+      findingsPerReview: { blocker: 0, major: 0.5, minor: 0 },
+      gated: 2,
+      sentBack: 1,
+      sentBackRate: 0.5,
+    });
+    expect(r2.reviewer).toEqual({
+      verdicts: 1,
+      approved: 0,
+      approvalRate: 0,
+      avgScore: 3,
+      findings: { blocker: 0, major: 0, minor: 0 },
+      findingsPerReview: { blocker: 0, major: 0, minor: 0 },
+      gated: 0,
+      sentBack: 0,
+      sentBackRate: null,
+    });
+    expect(r2).toMatchObject({ decisions: 1, overridden: 1 });
+
+    server.store.rebuild(['scorecard']);
+    expect(server.scorecard.view('30d', null)).toEqual(card);
+  });
+
+  it('counts a verdict in the period and project it was made in', async () => {
+    let now = new Date();
+    const server = await setup({}, { now: () => now });
+    await server.run('a');
+    const other = await server.projects.connect(initRepo(join(tempDir(), 'blog')));
+
+    expect(agent(server.scorecard.view('24h', server.project.id), 'reviewer').reviewer).toMatchObject({ verdicts: 1, approved: 1 });
+    expect(server.scorecard.view('24h', other.id).agents).toEqual([]);
+
+    now = new Date(Date.now() + 2 * 86_400_000);
+    expect(server.scorecard.view('24h', null).agents).toEqual([]);
+    expect(agent(server.scorecard.view('7d', null), 'reviewer').reviewer).toMatchObject({ verdicts: 1, avgScore: 8 });
+  });
+});
+
 describe('ScorecardService: pipelines', () => {
   it('tells runs merged without the operator from runs the operator stepped into', async () => {
     const server = await setup();
@@ -329,10 +439,16 @@ describe('ScorecardService: versions and filters', () => {
     server.decisions.override(verdict.id, 'approve', 'Fine by me.');
     const before = server.scorecard.view('all', null);
     expect(agent(before, 'implementer')).toMatchObject({ rework: 1, reviewed: 2 });
+    expect(agent(before, 'reviewer').reviewer).toMatchObject({ verdicts: 2, approved: 1, gated: 2, sentBack: 1 });
 
     server.store.rebuild();
     expect(server.scorecard.view('all', null)).toEqual(before);
-    server.db.exec('DELETE FROM scorecard_runs; DELETE FROM scorecard_steps; DELETE FROM scorecard_decisions;');
+    // an install from before migration 12 has every scorecard table filled but the reviews
+    server.db.exec('DELETE FROM scorecard_reviews;');
+    expect(new ScorecardQueries(server.db).needsBackfill()).toBe(true);
+    server.store.rebuild(['scorecard']);
+    expect(server.scorecard.view('all', null)).toEqual(before);
+    server.db.exec('DELETE FROM scorecard_runs; DELETE FROM scorecard_steps; DELETE FROM scorecard_decisions; DELETE FROM scorecard_reviews;');
     expect(new ScorecardQueries(server.db).needsBackfill()).toBe(true);
     server.store.rebuild(['scorecard']);
     expect(server.scorecard.view('all', null)).toEqual(before);
@@ -368,6 +484,7 @@ describe('GET /api/scorecard', () => {
     const all = scorecardSchema.parse(await (await server.app.request(url('/api/scorecard'))).json());
     expect(all).toMatchObject({ period: '30d', projectId: null });
     expect(agent(all, 'implementer').steps).toBe(1);
+    expect(agent(all, 'reviewer').reviewer).toMatchObject({ verdicts: 1, approved: 1, avgScore: 8, gated: 1, sentBack: 0 });
 
     const one = scorecardSchema.parse(await (await server.app.request(url(`/api/scorecard?projectId=${server.project.id}&period=all`))).json());
     expect(one).toMatchObject({ period: 'all', projectId: server.project.id });

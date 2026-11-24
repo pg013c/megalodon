@@ -324,4 +324,28 @@ export const migrations: readonly Migration[] = [
       WHERE status = 'running' AND run_id IN (SELECT run_id FROM scorecard_runs WHERE status IN ('succeeded', 'failed', 'cancelled'));
     `,
   },
+  {
+    // one row per agent review verdict, with the original gate on its step (ADR-0032)
+    id: 12,
+    name: 'scorecard: reviewer verdicts',
+    sql: `
+      CREATE TABLE scorecard_reviews (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        agent_version TEXT NOT NULL,
+        verdict TEXT NOT NULL,
+        score REAL,
+        blockers INTEGER NOT NULL DEFAULT 0,
+        majors INTEGER NOT NULL DEFAULT 0,
+        minors INTEGER NOT NULL DEFAULT 0,
+        gate TEXT,
+        at TEXT NOT NULL,
+        seq INTEGER NOT NULL
+      );
+      CREATE INDEX scorecard_reviews_by_project ON scorecard_reviews (project_id, at);
+    `,
+  },
 ];

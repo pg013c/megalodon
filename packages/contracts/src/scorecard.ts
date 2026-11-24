@@ -2,6 +2,29 @@ import { z } from 'zod';
 import { periodSchema } from './overview';
 import { runStatusSchema } from './runs';
 
+const findingCountsSchema = z.object({ blocker: z.number(), major: z.number(), minor: z.number() });
+
+/** How a reviewer version judged: the `review.verdict` decisions it made in a period (ADR-0032). */
+export const reviewerScoreSchema = z.object({
+  /** Verdicts it gave, including those the operator overrode later. */
+  verdicts: z.number().int(),
+  approved: z.number().int(),
+  /** approved of verdicts. */
+  approvalRate: z.number(),
+  /** The score it gave, per verdict that carried one; null when none did. */
+  avgScore: z.number().nullable(),
+  /** Findings it raised, by severity. */
+  findings: findingCountsSchema,
+  /** findings per verdict. */
+  findingsPerReview: findingCountsSchema,
+  /** Verdicts the step's gate judged, and how many of them it failed, sending the change back. */
+  gated: z.number().int(),
+  sentBack: z.number().int(),
+  /** sentBack of gated; null when no verdict was gated. */
+  sentBackRate: z.number().nullable(),
+});
+export type ReviewerScore = z.infer<typeof reviewerScoreSchema>;
+
 /** How one agent version did in a period (ADR-0032). */
 export const agentScoreSchema = z.object({
   agentId: z.string(),
@@ -36,6 +59,8 @@ export const agentScoreSchema = z.object({
   /** Decisions it made, and how many of them a later decision overrode. */
   decisions: z.number().int(),
   overridden: z.number().int(),
+  /** Only for a version that gave at least one review verdict in the period. */
+  reviewer: reviewerScoreSchema.optional(),
 });
 export type AgentScore = z.infer<typeof agentScoreSchema>;
 

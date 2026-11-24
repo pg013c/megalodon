@@ -1,4 +1,4 @@
-import type { AgentScore, Period, PipelineScore, Scorecard } from '@megalodon/contracts';
+import type { AgentScore, Period, PipelineScore, ReviewerScore, Scorecard } from '@megalodon/contracts';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useActiveProject } from '../../data/projects';
@@ -100,7 +100,7 @@ function grouped<T>(rows: readonly T[], id: (row: T) => string): T[][] {
   return [...groups.values()];
 }
 
-// a version column, then seven numbers
+// a version column, then seven numbers; the reviewer strip of a compare group uses it too
 const grid = 'grid grid-cols-[minmax(10rem,1.6fr)_repeat(7,minmax(0,1fr))] items-center gap-3';
 
 export function AgentScoreTable({ agents, onOpen }: { agents: readonly AgentScore[]; onOpen: (opened: Opened) => void }) {
@@ -110,7 +110,13 @@ export function AgentScoreTable({ agents, onOpen }: { agents: readonly AgentScor
         const first = versions[0]!;
         const name = first.name ?? first.agentId;
         return (
-          <Group key={first.agentId} title={name} subtitle={first.name ? first.agentId : 'removed from library'} compare={versions.length > 1}>
+          <Group
+            key={first.agentId}
+            title={name}
+            subtitle={first.name ? first.agentId : 'removed from library'}
+            compare={versions.length > 1}
+            footer={versions.length > 1 && versions.some((a) => a.reviewer) ? <ReviewerComparison versions={versions} /> : null}
+          >
             {versions.map((a) => (
               <Row
                 key={a.agentVersion}
@@ -121,7 +127,7 @@ export function AgentScoreTable({ agents, onOpen }: { agents: readonly AgentScor
                 <span>{a.runs}</span>
                 <span>{percent(a.successRate)}</span>
                 <span>{a.rework}</span>
-                <Cell main={score(a.reviewScore)} sub={a.reviewed > 0 ? `${a.reviewed} reviewed` : null} />
+                {a.reviewer ? <ReviewerCell r={a.reviewer} /> : <Cell main={score(a.reviewScore)} sub={a.reviewed > 0 ? `${a.reviewed} reviewed` : null} />}
                 <Cell main={cost(a.costUsd)} sub={a.avgCostUsd !== null ? `${cost(a.avgCostUsd)} / attempt` : null} />
                 <span>{duration(a.avgDurationMs)}</span>
                 <span>{a.decisions === 0 ? '—' : `${a.overridden} / ${a.decisions}`}</span>
@@ -180,8 +186,60 @@ function ScoreTable({ header, children }: { header: string[]; children: ReactNod
   );
 }
 
+const findings = (f: ReviewerScore['findings'], digits = 0) => `${f.blocker.toFixed(digits)}/${f.major.toFixed(digits)}/${f.minor.toFixed(digits)}`;
+
+/** How a reviewer version judged, in place of the review score it never gets (ADR-0033). */
+function ReviewerCell({ r }: { r: ReviewerScore }) {
+  return (
+    <span className="flex flex-col">
+      <span>
+        Approved {r.approved}/{r.verdicts}
+      </span>
+      <span className="text-xs text-muted">Score given {score(r.avgScore)}</span>
+      <span className="text-xs text-muted">Findings {findings(r.findings)}</span>
+      {r.gated > 0 && <span className="text-xs text-muted">Sent back {percent(r.sentBackRate)}</span>}
+    </span>
+  );
+}
+
+/** The verdicts of a reviewer's versions side by side, under its version rows. */
+function ReviewerComparison({ versions }: { versions: readonly AgentScore[] }) {
+  return (
+    <div className="mx-4 mt-2 rounded-lg bg-canvas py-1.5 text-[13px] tabular-nums">
+      <div className={`${grid} pb-1 text-xs text-muted`}>
+        {['Reviewer verdicts', 'Approved', 'Approval', 'Score given', 'Findings b/M/m', 'Per review', 'Sent back'].map((h) => (
+          <span key={h} className="first:pl-3">
+            {h}
+          </span>
+        ))}
+      </div>
+      {versions.map(({ agentVersion, current, reviewer: r }) => (
+        <div key={agentVersion} className={grid}>
+          <span className="pl-3">
+            <Version version={agentVersion} current={current} />
+          </span>
+          {r ? (
+            <>
+              <span>
+                {r.approved}/{r.verdicts}
+              </span>
+              <span>{percent(r.approvalRate)}</span>
+              <span>{score(r.avgScore)}</span>
+              <span>{findings(r.findings)}</span>
+              <span>{findings(r.findingsPerReview, 1)}</span>
+              <span>{r.gated > 0 ? `${percent(r.sentBackRate)} of ${r.gated}` : '—'}</span>
+            </>
+          ) : (
+            <span className="col-span-6 text-muted">—</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** One agent or pipeline; two or more versions get a rule on the left so they read as a comparison. */
-function Group({ title, subtitle, compare, children }: { title: string; subtitle: string; compare: boolean; children: ReactNode }) {
+function Group({ title, subtitle, compare, footer = null, children }: { title: string; subtitle: string; compare: boolean; footer?: ReactNode; children: ReactNode }) {
   return (
     <li className="py-2">
       <p className="px-4 pt-1 text-[13px]">
@@ -191,6 +249,7 @@ function Group({ title, subtitle, compare, children }: { title: string; subtitle
         {compare && <span aria-hidden className="absolute inset-y-1 left-2 w-0.5 rounded-full bg-accent/30" />}
         {children}
       </div>
+      {footer}
     </li>
   );
 }
